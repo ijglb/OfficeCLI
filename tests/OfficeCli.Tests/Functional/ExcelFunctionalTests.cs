@@ -614,7 +614,7 @@ public class ExcelFunctionalTests : IDisposable
         var chart = _handler.Get("/Sheet1/chart[1]");
         chart.Type.Should().Be("chart");
         ((string)chart.Format["title"]).Should().Be("Sales");
-        ((string)chart.Format["chartType"]).Should().Contain("Chart");
+        ((string)chart.Format["chartType"]).Should().Be("column");
 
         // 4. Set (modify title)
         _handler.Set("/Sheet1/chart[1]", new() { ["title"] = "Updated Sales" });

@@ -282,20 +282,7 @@ public partial class ExcelHandler
             var chart = chartPart.ChartSpace?.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.Chart>();
             var chartNode = new DocumentNode { Path = path, Type = "chart" };
             if (chart != null)
-            {
-                var title = chart.Title?.Descendants<DocumentFormat.OpenXml.Drawing.Run>()
-                    .FirstOrDefault()?.Text?.Text;
-                if (title != null) chartNode.Format["title"] = title;
-                var plotArea = chart.PlotArea;
-                if (plotArea != null)
-                {
-                    var chartType = plotArea.ChildElements
-                        .FirstOrDefault(e => e.LocalName.EndsWith("Chart"))?.LocalName ?? "unknown";
-                    chartNode.Format["chartType"] = chartType;
-                }
-                var legend = chart.Legend;
-                if (legend != null) chartNode.Format["legend"] = true;
-            }
+                ChartHelper.ReadChartProperties(chart, chartNode, depth);
             return chartNode;
         }
 
@@ -369,7 +356,7 @@ public partial class ExcelHandler
         var elementMatch = Regex.Match(selector.Split('!').Last(), @"^(\w+)");
         var elementName = elementMatch.Success ? elementMatch.Groups[1].Value : "";
         bool isKnownType = string.IsNullOrEmpty(elementName)
-            || elementName is "cell" or "row" or "sheet" or "validation" or "comment" or "note" or "table" or "listobject"
+            || elementName is "cell" or "row" or "sheet" or "validation" or "comment" or "note" or "table" or "listobject" or "chart"
             || (elementName.Length <= 3 && Regex.IsMatch(elementName, @"^[A-Z]+$", RegexOptions.IgnoreCase));
         if (!isKnownType)
         {
@@ -435,6 +422,38 @@ public partial class ExcelHandler
                 var tableParts = worksheetPart.TableDefinitionParts.ToList();
                 for (int i = 0; i < tableParts.Count; i++)
                     results.Add(TableToNode(sheetName, worksheetPart, i + 1, 0));
+            }
+            return results;
+        }
+
+        // Handle chart queries
+        if (elementName == "chart")
+        {
+            foreach (var (sheetName, worksheetPart) in GetWorksheets())
+            {
+                if (parsed.Sheet != null && !sheetName.Equals(parsed.Sheet, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var drawingsPart = worksheetPart.DrawingsPart;
+                if (drawingsPart == null) continue;
+
+                var chartParts = drawingsPart.ChartParts.ToList();
+                for (int i = 0; i < chartParts.Count; i++)
+                {
+                    var chart = chartParts[i].ChartSpace?.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.Chart>();
+                    var node = new DocumentNode { Path = $"/{sheetName}/chart[{i + 1}]", Type = "chart" };
+                    if (chart != null)
+                        ChartHelper.ReadChartProperties(chart, node, 0);
+
+                    // Filter by contains text (match on title)
+                    if (parsed.ValueContains != null)
+                    {
+                        var title = node.Format.TryGetValue("title", out var t) ? t?.ToString() : null;
+                        if (title == null || !title.Contains(parsed.ValueContains, StringComparison.OrdinalIgnoreCase))
+                            continue;
+                    }
+                    results.Add(node);
+                }
             }
             return results;
         }

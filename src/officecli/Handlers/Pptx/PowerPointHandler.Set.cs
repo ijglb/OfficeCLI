@@ -293,7 +293,7 @@ public partial class PowerPointHandler
                 }
             }
 
-            var unsupported = SetChartProperties(chartPart, chartProps);
+            var unsupported = ChartHelper.SetChartProperties(chartPart, chartProps);
             GetSlide(slidePart).Save();
             return unsupported;
         }
@@ -627,6 +627,12 @@ public partial class PowerPointHandler
                             ".wmf" => ImagePartType.Wmf,
                             _ => ImagePartType.Png
                         };
+                        // Remove old image part to avoid storage bloat
+                        var oldEmbedId = blip.Embed?.Value;
+                        if (oldEmbedId != null)
+                        {
+                            try { slidePart.DeletePart(oldEmbedId); } catch { }
+                        }
                         var newImgPart = slidePart.AddImagePart(imgType);
                         using (var stream = File.OpenRead(value))
                             newImgPart.FeedData(stream);

@@ -383,7 +383,8 @@ public partial class ExcelHandler
                 var minVal = properties.GetValueOrDefault("min", "0");
                 var maxVal = properties.GetValueOrDefault("max", "1");
                 var cfColor = properties.GetValueOrDefault("color", "638EC6");
-                var normalizedColor = (cfColor.Length == 6 ? "FF" : "") + cfColor.ToUpperInvariant();
+                var strippedColor = cfColor.TrimStart('#').ToUpperInvariant();
+                var normalizedColor = (strippedColor.Length == 6 ? "FF" : "") + strippedColor;
 
                 var cfRule = new ConditionalFormattingRule
                 {
@@ -435,8 +436,10 @@ public partial class ExcelHandler
                 var maxColor = properties.GetValueOrDefault("maxcolor", "63BE7B");
                 var midColor = properties.GetValueOrDefault("midcolor");
 
-                var normalizedMinColor = (minColor.Length == 6 ? "FF" : "") + minColor.ToUpperInvariant();
-                var normalizedMaxColor = (maxColor.Length == 6 ? "FF" : "") + maxColor.ToUpperInvariant();
+                var strippedMinColor = minColor.TrimStart('#').ToUpperInvariant();
+                var normalizedMinColor = (strippedMinColor.Length == 6 ? "FF" : "") + strippedMinColor;
+                var strippedMaxColor = maxColor.TrimStart('#').ToUpperInvariant();
+                var normalizedMaxColor = (strippedMaxColor.Length == 6 ? "FF" : "") + strippedMaxColor;
 
                 var colorScale = new ColorScale();
                 colorScale.Append(new ConditionalFormatValueObject { Type = ConditionalFormatValueObjectValues.Min });
@@ -446,7 +449,8 @@ public partial class ExcelHandler
                 colorScale.Append(new DocumentFormat.OpenXml.Spreadsheet.Color { Rgb = normalizedMinColor });
                 if (midColor != null)
                 {
-                    var normalizedMidColor = (midColor.Length == 6 ? "FF" : "") + midColor.ToUpperInvariant();
+                    var strippedMidColor = midColor.TrimStart('#').ToUpperInvariant();
+                    var normalizedMidColor = (strippedMidColor.Length == 6 ? "FF" : "") + strippedMidColor;
                     colorScale.Append(new DocumentFormat.OpenXml.Spreadsheet.Color { Rgb = normalizedMidColor });
                 }
                 colorScale.Append(new DocumentFormat.OpenXml.Spreadsheet.Color { Rgb = normalizedMaxColor });
@@ -552,7 +556,8 @@ public partial class ExcelHandler
                 var dxf = new DifferentialFormat();
                 if (properties.TryGetValue("font.color", out var fontColor))
                 {
-                    var normalizedFontColor = (fontColor.Length == 6 ? "FF" : "") + fontColor.ToUpperInvariant();
+                    var strippedFontColor = fontColor.TrimStart('#').ToUpperInvariant();
+                    var normalizedFontColor = (strippedFontColor.Length == 6 ? "FF" : "") + strippedFontColor;
                     dxf.Append(new Font(new DocumentFormat.OpenXml.Spreadsheet.Color { Rgb = normalizedFontColor }));
                 }
                 else if (properties.TryGetValue("font.bold", out var fontBold) && IsTruthy(fontBold))
@@ -562,7 +567,8 @@ public partial class ExcelHandler
 
                 if (properties.TryGetValue("fill", out var fillColor))
                 {
-                    var normalizedFillColor = (fillColor.Length == 6 ? "FF" : "") + fillColor.ToUpperInvariant();
+                    var strippedFillColor = fillColor.TrimStart('#').ToUpperInvariant();
+                    var normalizedFillColor = (strippedFillColor.Length == 6 ? "FF" : "") + strippedFillColor;
                     dxf.Append(new Fill(new PatternFill(
                         new BackgroundColor { Rgb = normalizedFillColor })
                     { PatternType = PatternValues.Solid }));
@@ -836,8 +842,8 @@ public partial class ExcelHandler
                     || kv.Key.Equals("type", StringComparison.OrdinalIgnoreCase)).Value
                     ?? "column";
                 var chartTitle = properties.GetValueOrDefault("title");
-                var categories = ExcelChartParseCategories(properties);
-                var seriesData = ExcelChartParseSeriesData(properties);
+                var categories = ChartHelper.ParseCategories(properties);
+                var seriesData = ChartHelper.ParseSeriesData(properties);
 
                 if (seriesData.Count == 0)
                     throw new ArgumentException("Chart requires data. Use: data=\"Series1:1,2,3;Series2:4,5,6\" " +
@@ -863,7 +869,7 @@ public partial class ExcelHandler
 
                 // Create ChartPart and build chart
                 var chartPart = drawingsPart.AddNewPart<ChartPart>();
-                chartPart.ChartSpace = ExcelChartBuildChartSpace(chartType, chartTitle, categories, seriesData, properties);
+                chartPart.ChartSpace = ChartHelper.BuildChartSpace(chartType, chartTitle, categories, seriesData, properties);
                 chartPart.ChartSpace.Save();
 
                 // Position via TwoCellAnchor

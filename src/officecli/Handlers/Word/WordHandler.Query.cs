@@ -83,6 +83,23 @@ public partial class WordHandler
             return tocNode;
         }
 
+        // Chart paths: /chart[N]
+        var chartGetMatch = System.Text.RegularExpressions.Regex.Match(path, @"^/chart\[(\d+)\]$");
+        if (chartGetMatch.Success)
+        {
+            var chartIdx = int.Parse(chartGetMatch.Groups[1].Value);
+            var chartParts = _doc.MainDocumentPart?.ChartParts.ToList();
+            if (chartParts == null || chartIdx < 1 || chartIdx > chartParts.Count)
+                return new DocumentNode { Path = path, Type = "error", Text = $"Chart {chartIdx} not found" };
+
+            var chartPart = chartParts[chartIdx - 1];
+            var chart = chartPart.ChartSpace?.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.Chart>();
+            var chartNode = new DocumentNode { Path = path, Type = "chart" };
+            if (chart != null)
+                Core.ChartHelper.ReadChartProperties(chart, chartNode, depth);
+            return chartNode;
+        }
+
         // Section paths: /section[N]
         var secMatch = System.Text.RegularExpressions.Regex.Match(path, @"^/section\[(\d+)\]$");
         if (secMatch.Success)
@@ -366,12 +383,39 @@ public partial class WordHandler
             || genericParsed.element is "p" or "paragraph" or "r" or "run"
                 or "picture" or "image" or "img"
                 or "equation" or "math" or "formula"
-                or "bookmark";
+                or "bookmark"
+                or "chart";
         if (!isKnownType && parsed.ChildSelector == null)
         {
             var root = _doc.MainDocumentPart?.Document;
             if (root != null)
                 return GenericXmlQuery.Query(root, genericParsed.element, genericParsed.attrs, genericParsed.containsText);
+            return results;
+        }
+
+        // Handle chart query
+        bool isChartSelector = parsed.ChildSelector == null && parsed.Element == "chart";
+        if (isChartSelector)
+        {
+            var chartParts = _doc.MainDocumentPart?.ChartParts.ToList();
+            if (chartParts != null)
+            {
+                for (int i = 0; i < chartParts.Count; i++)
+                {
+                    var chart = chartParts[i].ChartSpace?.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.Chart>();
+                    var node = new DocumentNode { Path = $"/chart[{i + 1}]", Type = "chart" };
+                    if (chart != null)
+                        Core.ChartHelper.ReadChartProperties(chart, node, 0);
+
+                    if (parsed.ContainsText != null)
+                    {
+                        var title = node.Format.TryGetValue("title", out var t) ? t?.ToString() : null;
+                        if (title == null || !title.Contains(parsed.ContainsText, StringComparison.OrdinalIgnoreCase))
+                            continue;
+                    }
+                    results.Add(node);
+                }
+            }
             return results;
         }
 

@@ -6,6 +6,7 @@ using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
 using OfficeCli.Core;
+using A = DocumentFormat.OpenXml.Drawing;
 using C = DocumentFormat.OpenXml.Drawing.Charts;
 using DW = DocumentFormat.OpenXml.Drawing.Wordprocessing;
 using M = DocumentFormat.OpenXml.Math;
@@ -163,7 +164,7 @@ public partial class WordHandler
                     if (properties.TryGetValue("italic", out var pItalic) && IsTruthy(pItalic))
                         rProps.Italic = new Italic();
                     if (properties.TryGetValue("color", out var pColor))
-                        rProps.Color = new Color { Val = pColor.ToUpperInvariant() };
+                        rProps.Color = new Color { Val = pColor.TrimStart('#').ToUpperInvariant() };
                     if (properties.TryGetValue("underline", out var pUnderline))
                         rProps.Underline = new Underline { Val = new UnderlineValues(pUnderline) };
                     if (properties.TryGetValue("strike", out var pStrike) && IsTruthy(pStrike))
@@ -456,6 +457,76 @@ public partial class WordHandler
                 var cellIdx = targetRow.Elements<TableCell>().ToList().IndexOf(newCell) + 1;
                 resultPath = $"{parentPath}/tc[{cellIdx}]";
                 newElement = newCell;
+                break;
+            }
+
+            case "chart":
+            {
+                var chartMainPart = _doc.MainDocumentPart!;
+
+                // Parse chart data
+                var chartType = properties.FirstOrDefault(kv =>
+                    kv.Key.Equals("charttype", StringComparison.OrdinalIgnoreCase)
+                    || kv.Key.Equals("type", StringComparison.OrdinalIgnoreCase)).Value
+                    ?? "column";
+                var chartTitle = properties.GetValueOrDefault("title");
+                var categories = Core.ChartHelper.ParseCategories(properties);
+                var seriesData = Core.ChartHelper.ParseSeriesData(properties);
+
+                if (seriesData.Count == 0)
+                    throw new ArgumentException("Chart requires data. Use: data=\"Series1:1,2,3;Series2:4,5,6\" " +
+                        "or series1=\"Revenue:100,200,300\"");
+
+                // Create ChartPart and build chart
+                var chartPart = chartMainPart.AddNewPart<ChartPart>();
+                chartPart.ChartSpace = Core.ChartHelper.BuildChartSpace(chartType, chartTitle, categories, seriesData, properties);
+                chartPart.ChartSpace.Save();
+
+                var chartRelId = chartMainPart.GetIdOfPart(chartPart);
+
+                // Dimensions (default: 15cm x 10cm)
+                long chartCx = properties.TryGetValue("width", out var cwStr) ? ParseEmu(cwStr) : 5400000;
+                long chartCy = properties.TryGetValue("height", out var chStr) ? ParseEmu(chStr) : 3600000;
+
+                var docPropId = NextImageId();
+                var chartName = chartTitle ?? $"Chart {docPropId}";
+
+                // Build Drawing/Inline with ChartReference
+                var inline = new DW.Inline(
+                    new DW.Extent { Cx = chartCx, Cy = chartCy },
+                    new DW.EffectExtent { LeftEdge = 0, TopEdge = 0, RightEdge = 0, BottomEdge = 0 },
+                    new DW.DocProperties { Id = docPropId, Name = chartName },
+                    new DW.NonVisualGraphicFrameDrawingProperties(),
+                    new A.Graphic(
+                        new A.GraphicData(
+                            new DocumentFormat.OpenXml.Drawing.Charts.ChartReference { Id = chartRelId }
+                        )
+                        { Uri = "http://schemas.openxmlformats.org/drawingml/2006/chart" }
+                    )
+                )
+                {
+                    DistanceFromTop = 0U,
+                    DistanceFromBottom = 0U,
+                    DistanceFromLeft = 0U,
+                    DistanceFromRight = 0U
+                };
+
+                var chartRun = new Run(new Drawing(inline));
+                Paragraph chartPara;
+                if (parent is Paragraph existingChartPara)
+                {
+                    existingChartPara.AppendChild(chartRun);
+                    chartPara = existingChartPara;
+                }
+                else
+                {
+                    chartPara = new Paragraph(chartRun);
+                    parent.AppendChild(chartPara);
+                }
+                newElement = chartPara;
+
+                var chartIdx = chartMainPart.ChartParts.ToList().IndexOf(chartPart) + 1;
+                resultPath = $"/chart[{chartIdx}]";
                 break;
             }
 

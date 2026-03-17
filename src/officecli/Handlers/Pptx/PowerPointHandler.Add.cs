@@ -46,17 +46,18 @@ public partial class PowerPointHandler
                     )
                 );
 
-                // Add title shape if text provided
+                // Add title shape if text provided (ID starts at 2 since ShapeTree group uses ID=1)
+                uint nextShapeId = 2;
                 if (properties.TryGetValue("title", out var titleText))
                 {
-                    var titleShape = CreateTextShape(1, "Title", titleText, true);
+                    var titleShape = CreateTextShape(nextShapeId++, "Title", titleText, true);
                     newSlidePart.Slide.CommonSlideData!.ShapeTree!.AppendChild(titleShape);
                 }
 
                 // Add content text if provided
                 if (properties.TryGetValue("text", out var contentText))
                 {
-                    var textShape = CreateTextShape(2, "Content", contentText, false);
+                    var textShape = CreateTextShape(nextShapeId++, "Content", contentText, false);
                     newSlidePart.Slide.CommonSlideData!.ShapeTree!.AppendChild(textShape);
                 }
 
@@ -457,8 +458,8 @@ public partial class PowerPointHandler
                     || kv.Key.Equals("type", StringComparison.OrdinalIgnoreCase)).Value
                     ?? "column";
                 var chartTitle = properties.GetValueOrDefault("title");
-                var categories = ParseCategories(properties);
-                var seriesData = ParseSeriesData(properties);
+                var categories = ChartHelper.ParseCategories(properties);
+                var seriesData = ChartHelper.ParseSeriesData(properties);
 
                 if (seriesData.Count == 0)
                     throw new ArgumentException("Chart requires data. Use: data=\"Series1:1,2,3;Series2:4,5,6\" " +
@@ -466,7 +467,7 @@ public partial class PowerPointHandler
 
                 // Create ChartPart and build chart
                 var chartPart = chartSlidePart.AddNewPart<ChartPart>();
-                chartPart.ChartSpace = BuildChartSpace(chartType, chartTitle, categories, seriesData, properties);
+                chartPart.ChartSpace = ChartHelper.BuildChartSpace(chartType, chartTitle, categories, seriesData, properties);
                 chartPart.ChartSpace.Save();
 
                 // Position

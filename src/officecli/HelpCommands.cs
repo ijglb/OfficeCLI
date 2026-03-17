@@ -182,7 +182,7 @@ Examples:
 Word (.docx) — query
 =====================
 
-Element types:  paragraph (p), run (r), table (tbl), picture, equation, header, footer, bookmark
+Element types:  paragraph (p), run (r), table (tbl), picture, equation, header, footer, bookmark, chart
 Attribute filters:  [attr=value], [attr!=value]
 Pseudo-selectors:   :contains("text"), :empty, :no-alt, :has(formula)
 Child combinator:   paragraph > run[bold=true]
@@ -200,6 +200,8 @@ Examples:
   officecli query doc.docx 'footer'
   officecli query doc.docx 'bookmark'
   officecli query doc.docx 'bookmark:contains("important")'
+  officecli query doc.docx 'chart'
+  officecli query doc.docx 'chart:contains("Sales")'
 """;
 
     const string DocxSet = """
@@ -281,6 +283,22 @@ Examples:
   officecli set doc.docx '/header[1]' --prop text="New Header" --prop bold=true
   officecli set doc.docx '/footer[1]' --prop text="Page Footer" --prop alignment=center
   officecli set doc.docx '/bookmark[MyBookmark]' --prop text="Updated text"
+  officecli set doc.docx '/chart[1]' --prop title="Revenue" --prop legend=top
+  officecli set doc.docx '/chart[1]' --prop colors=FF0000,00FF00 --prop dataLabels=value
+
+Chart (/chart[N]):
+  title        Chart title text (or "none" to remove)
+  legend       Legend position: top/bottom/left/right or "none" to remove
+  categories   Update category labels (comma-separated)
+  data         Replace all series: "S1:1,2;S2:3,4"
+  series1..N   Update individual series: "NewName:1,2,3" or just "1,2,3"
+  colors       Series colors (comma-separated hex): "FF0000,00FF00,0000FF"
+  dataLabels   Data labels: value, category, series, percent, all, none
+  axisTitle    Value axis title (alias: vtitle)
+  catTitle     Category axis title (alias: htitle)
+  axisMin, axisMax  Value axis scale bounds
+  majorUnit, minorUnit  Tick mark spacing
+  axisNumFmt   Value axis number format (e.g. "0.0", "$#,##0")
 """;
 
     const string DocxAdd = """
@@ -318,6 +336,12 @@ Types and properties:
     Floating: anchor=true, wrap (none|square|tight|through|topAndBottom),
       hposition, vposition (cm/in/pt/EMU), hrelative (margin|page|column|character),
       vrelative (margin|page|paragraph|line), behindText (bool)
+
+  chart  -- parent: /body
+    chartType (column|bar|line|pie|doughnut|area|scatter|combo, default: column)
+    title, categories ("Q1,Q2,Q3"), data ("S1:1,2,3;S2:4,5,6")
+    series1..N ("Revenue:100,200"), colors ("FF0000,00FF00"), legend (top|bottom|left|right|none)
+    width, height (cm/in/pt/EMU, default: 15cm x 10cm)
 
   equation (formula, math)  -- parent: /body/p[N] or /body
     formula (required, LaTeX subset), mode (display|inline)
@@ -538,6 +562,8 @@ Examples:
   officecli query data.xlsx 'validation'
   officecli query data.xlsx 'comment'
   officecli query data.xlsx 'table'
+  officecli query data.xlsx 'chart'
+  officecli query data.xlsx 'chart:contains("Sales")'
 """;
 
     const string XlsxSet = """
@@ -592,7 +618,18 @@ Named range (/namedrange[N] or /namedrange[Name]):
   ref, name, comment
 
 Chart (/SheetName/chart[N]):
-  title
+  title        Chart title text (or "none" to remove)
+  legend       Legend position: top/bottom/left/right or "none" to remove
+  categories   Update category labels (comma-separated)
+  data         Replace all series: "S1:1,2;S2:3,4"
+  series1..N   Update individual series: "NewName:1,2,3" or just "1,2,3"
+  colors       Series colors (comma-separated hex): "FF0000,00FF00,0000FF"
+  dataLabels   Data labels: value, category, series, percent, all, none
+  axisTitle    Value axis title (alias: vtitle)
+  catTitle     Category axis title (alias: htitle)
+  axisMin, axisMax  Value axis scale bounds
+  majorUnit, minorUnit  Tick mark spacing
+  axisNumFmt   Value axis number format (e.g. "0.0", "$#,##0")
 
 Examples:
   officecli set data.xlsx '/Sheet1/A1' --prop value=100 --prop font.bold=true

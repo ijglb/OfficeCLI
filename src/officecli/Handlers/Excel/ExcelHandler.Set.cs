@@ -332,19 +332,19 @@ public partial class ExcelHandler
                         break;
                     case "color":
                         var dbColor = rule?.GetFirstChild<DataBar>()?.GetFirstChild<DocumentFormat.OpenXml.Spreadsheet.Color>();
-                        if (dbColor != null) dbColor.Rgb = (value.Length == 6 ? "FF" : "") + value.ToUpperInvariant();
+                        if (dbColor != null) { var sc = value.TrimStart('#').ToUpperInvariant(); dbColor.Rgb = (sc.Length == 6 ? "FF" : "") + sc; }
                         else unsup.Add(key);
                         break;
                     case "mincolor":
                         var csColors = rule?.GetFirstChild<ColorScale>()?.Elements<DocumentFormat.OpenXml.Spreadsheet.Color>().ToList();
                         if (csColors != null && csColors.Count >= 2)
-                            csColors[0].Rgb = (value.Length == 6 ? "FF" : "") + value.ToUpperInvariant();
+                        { var sc = value.TrimStart('#').ToUpperInvariant(); csColors[0].Rgb = (sc.Length == 6 ? "FF" : "") + sc; }
                         else unsup.Add(key);
                         break;
                     case "maxcolor":
                         var csColors2 = rule?.GetFirstChild<ColorScale>()?.Elements<DocumentFormat.OpenXml.Spreadsheet.Color>().ToList();
                         if (csColors2 != null && csColors2.Count >= 2)
-                            csColors2[^1].Rgb = (value.Length == 6 ? "FF" : "") + value.ToUpperInvariant();
+                        { var sc = value.TrimStart('#').ToUpperInvariant(); csColors2[^1].Rgb = (sc.Length == 6 ? "FF" : "") + sc; }
                         else unsup.Add(key);
                         break;
                     case "iconset":
@@ -402,27 +402,7 @@ public partial class ExcelHandler
                 throw new ArgumentException($"Chart {chartIdx} not found");
             var chartPart = chartParts[chartIdx - 1];
 
-            var unsup = new List<string>();
-            var chart = chartPart.ChartSpace?.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.Chart>();
-            if (chart == null) return unsup;
-
-            foreach (var (key, value) in properties)
-            {
-                switch (key.ToLowerInvariant())
-                {
-                    case "title":
-                        var titleEl = chart.Title;
-                        if (titleEl != null)
-                        {
-                            var titleRun = titleEl.Descendants<DocumentFormat.OpenXml.Drawing.Run>().FirstOrDefault();
-                            if (titleRun?.Text != null) titleRun.Text.Text = value;
-                        }
-                        break;
-                    default:
-                        unsup.Add(key);
-                        break;
-                }
-            }
+            var unsup = ChartHelper.SetChartProperties(chartPart, properties);
             chartPart.ChartSpace?.Save();
             return unsup;
         }
@@ -704,7 +684,6 @@ public partial class ExcelHandler
             }
         }
 
-        ReorderWorksheetChildren(ws);
         ReorderWorksheetChildren(ws); ws.Save();
         return unsupported;
     }
@@ -734,7 +713,11 @@ public partial class ExcelHandler
         if (col == null)
         {
             col = new Column { Min = colIdx, Max = colIdx, Width = 8.43, CustomWidth = true };
-            columns.AppendChild(col);
+            var afterCol = columns.Elements<Column>().LastOrDefault(c => (c.Min?.Value ?? 0) < colIdx);
+            if (afterCol != null)
+                afterCol.InsertAfterSelf(col);
+            else
+                columns.PrependChild(col);
         }
 
         foreach (var (key, value) in properties)

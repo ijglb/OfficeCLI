@@ -35,6 +35,20 @@ public partial class WordHandler
             }
         }
 
+        // Chart paths: /chart[N]
+        var chartMatch = System.Text.RegularExpressions.Regex.Match(path, @"^/chart\[(\d+)\]$");
+        if (chartMatch.Success)
+        {
+            var chartIdx = int.Parse(chartMatch.Groups[1].Value);
+            var chartParts = _doc.MainDocumentPart?.ChartParts.ToList()
+                ?? throw new ArgumentException("No charts in this document");
+            if (chartIdx < 1 || chartIdx > chartParts.Count)
+                throw new ArgumentException($"Chart {chartIdx} not found (total: {chartParts.Count})");
+            unsupported = Core.ChartHelper.SetChartProperties(chartParts[chartIdx - 1], properties);
+            _doc.MainDocumentPart?.Document?.Save();
+            return unsupported;
+        }
+
         // TOC paths: /toc[N]
         var tocMatch = System.Text.RegularExpressions.Regex.Match(path, @"/toc\[(\d+)\]$");
         if (tocMatch.Success)
@@ -295,7 +309,7 @@ public partial class WordHandler
                         break;
                     case "color":
                         var rPr5 = style.StyleRunProperties ?? style.AppendChild(new StyleRunProperties());
-                        rPr5.Color = new Color { Val = value.ToUpperInvariant() };
+                        rPr5.Color = new Color { Val = value.TrimStart('#').ToUpperInvariant() };
                         break;
                     case "alignment":
                         var pPr = style.StyleParagraphProperties ?? style.AppendChild(new StyleParagraphProperties());
@@ -443,7 +457,7 @@ public partial class WordHandler
                         };
                         break;
                     case "color":
-                        EnsureRunProperties(run).Color = new Color { Val = value.ToUpperInvariant() };
+                        EnsureRunProperties(run).Color = new Color { Val = value.TrimStart('#').ToUpperInvariant() };
                         break;
                     case "underline":
                         EnsureRunProperties(run).Underline = new Underline
@@ -682,7 +696,7 @@ public partial class WordHandler
                                     pRunProps.Italic = IsTruthy(value) ? new Italic() : null;
                                     break;
                                 case "color":
-                                    pRunProps.Color = new Color { Val = value.ToUpperInvariant() };
+                                    pRunProps.Color = new Color { Val = value.TrimStart('#').ToUpperInvariant() };
                                     break;
                             }
                         }
@@ -755,7 +769,7 @@ public partial class WordHandler
                                         rPr.Italic = IsTruthy(value) ? new Italic() : null;
                                         break;
                                     case "color":
-                                        rPr.Color = new Color { Val = value.ToUpperInvariant() };
+                                        rPr.Color = new Color { Val = value.TrimStart('#').ToUpperInvariant() };
                                         break;
                                 }
                             }
@@ -856,6 +870,7 @@ public partial class WordHandler
                 switch (key.ToLowerInvariant())
                 {
                     case "height":
+                        trPr.GetFirstChild<TableRowHeight>()?.Remove();
                         trPr.AppendChild(new TableRowHeight { Val = uint.Parse(value), HeightType = HeightRuleValues.AtLeast });
                         break;
                     case "header":
@@ -967,7 +982,7 @@ public partial class WordHandler
                     break;
                 case "color":
                     foreach (var run in container.Descendants<Run>())
-                        EnsureRunProperties(run).Color = new Color { Val = value.ToUpperInvariant() };
+                        EnsureRunProperties(run).Color = new Color { Val = value.TrimStart('#').ToUpperInvariant() };
                     break;
                 case "alignment":
                 {
