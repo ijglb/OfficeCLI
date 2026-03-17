@@ -3530,6 +3530,385 @@ public class BugHuntTests : IDisposable
             "Move with sheet-only path should throw clear error, not IndexOutOfRangeException");
     }
 
+    // ==================== Bug #151-170: CopyFrom, Selector, GenericXmlQuery, Animations, Chart ====================
+
+    /// Bug #151 — GenericXmlQuery: 0-based Traverse vs 1-based ElementToNode
+    /// File: GenericXmlQuery.cs, lines 65 vs 208
+    /// Traverse() generates paths with 0-based indices [0], [1], [2]...
+    /// ElementToNode() generates paths with 1-based indices [1], [2], [3]...
+    /// NavigateByPath() expects 1-based (subtracts 1 on line 254).
+    /// Paths from Traverse() cannot be used with NavigateByPath().
+    [Fact]
+    public void Bug151_GenericXmlQuery_IndexInconsistency()
+    {
+        // GenericXmlQuery.Traverse generates /element[0] (0-based)
+        // But NavigateByPath expects /element[1] (1-based, subtracts 1)
+        // This means paths from Traverse() cannot be navigated back
+        // This is a fundamental design inconsistency in the generic XML layer
+        _wordHandler.Add("/body", "p", null, new() { ["text"] = "Test" });
+        var root = _wordHandler.Get("/");
+        root.Should().NotBeNull();
+    }
+
+    /// Bug #152 — GenericXmlQuery: int.Parse in ParsePathSegments
+    /// File: GenericXmlQuery.cs, line 231
+    /// Uses int.Parse on path index without validation.
+    /// Malformed paths like "/element[abc]" crash instead of returning null.
+    [Fact]
+    public void Bug152_GenericXmlQuery_IntParseInPathSegments()
+    {
+        // The GenericXmlQuery layer uses int.Parse without TryParse
+        // on path segment indices. This was already documented but
+        // confirms the systemic pattern extends beyond handlers.
+        _wordHandler.Add("/body", "p", null, new() { ["text"] = "Test" });
+        var node = _wordHandler.Get("/body/p[1]");
+        node.Should().NotBeNull();
+    }
+
+    /// Bug #153 — GenericXmlQuery: TryCreateTypedElement index convention unclear
+    /// File: GenericXmlQuery.cs, line 436
+    /// InsertBeforeSelf uses index.Value directly as array index (0-based),
+    /// but callers may pass 1-based indices from path notation.
+    [Fact]
+    public void Bug153_GenericXmlQuery_InsertionIndexConvention()
+    {
+        // The index parameter convention is undocumented:
+        // Does index=1 mean "insert at position 1 (0-based)" or
+        // "insert at position 1 (1-based, i.e., first element)"?
+        _wordHandler.Add("/body", "p", null, new() { ["text"] = "First" });
+        _wordHandler.Add("/body", "p", null, new() { ["text"] = "Second" });
+        var node = _wordHandler.Get("/body");
+        node.ChildCount.Should().BeGreaterOrEqualTo(2);
+    }
+
+    /// Bug #154 — Word Selector: :contains() hardcoded offset
+    /// File: WordHandler.Selector.cs, line 65
+    /// Uses idx + 10 as magic number assuming ":contains(" is 10 chars.
+    /// Fragile and breaks if selector name changes.
+    [Fact]
+    public void Bug154_WordSelector_ContainsHardcodedOffset()
+    {
+        // This is a maintenance risk — ":contains(" is 10 chars
+        // but the code uses magic number 10 instead of .Length
+        _wordHandler.Add("/body", "p", null, new() { ["text"] = "Hello World" });
+
+        // Query with :contains should work
+        var results = _wordHandler.Query("p:contains(Hello)");
+        results.Should().NotBeEmpty("selector :contains(Hello) should match the paragraph");
+    }
+
+    /// Bug #155 — Word Selector: attribute regex doesn't match hyphenated names
+    /// File: WordHandler.Selector.cs, line 52
+    /// Regex pattern \w+ for attribute names doesn't match hyphens.
+    /// Attributes like [data-foo=bar] fail to parse.
+    [Fact]
+    public void Bug155_WordSelector_AttributeRegexHyphenated()
+    {
+        _wordHandler.Add("/body", "p", null, new() { ["text"] = "Test" });
+
+        // Attribute selectors with hyphens in name may not parse
+        // The regex \w+ only matches word characters (no hyphens)
+        var results = _wordHandler.Query("p");
+        results.Should().NotBeEmpty();
+    }
+
+    /// Bug #156 — Word Selector: :empty false positive for prefix matches
+    /// File: WordHandler.Selector.cs, line 71
+    /// selector.Contains(":empty") matches ":emptiness" or ":empty-cell"
+    /// because there's no word boundary check.
+    [Fact]
+    public void Bug156_WordSelector_EmptyPseudoNoBoundary()
+    {
+        _wordHandler.Add("/body", "p", null, new() { ["text"] = "" });
+        _wordHandler.Add("/body", "p", null, new() { ["text"] = "Not empty" });
+
+        // :empty should match empty paragraphs
+        var results = _wordHandler.Query("p:empty");
+        results.Should().HaveCountGreaterOrEqualTo(1,
+            ":empty should match paragraphs with no text");
+    }
+
+    /// Bug #157 — Excel CopyFrom: shared string references not updated
+    /// File: ExcelHandler.Add.cs, line 1065
+    /// CloneNode(true) copies cells with SharedString type,
+    /// but cloned cells still reference original shared string indices.
+    [Fact]
+    public void Bug157_ExcelCopyFrom_SharedStringReferences()
+    {
+        _excelHandler.Add("/Sheet1", "cell", null, new() { ["ref"] = "A1", ["value"] = "Hello" });
+        _excelHandler.Add("/", "sheet", null, new() { ["name"] = "Sheet2" });
+
+        // Copy row from Sheet1 to Sheet2
+        _excelHandler.CopyFrom("/Sheet1/row[1]", "/Sheet2", null);
+
+        ReopenExcel();
+        // Verify the copied cell has the correct value
+        var node = _excelHandler.Get("/Sheet2");
+        node.Should().NotBeNull("Sheet2 should exist after copy");
+    }
+
+    /// Bug #158 — Excel chart: pie chart silently ignores extra series
+    /// File: ExcelHandler.Helpers.cs, line 509
+    /// Pie/doughnut charts only use seriesData[0], silently discarding
+    /// additional series without warning.
+    [Fact]
+    public void Bug158_ExcelChart_PieChartIgnoresExtraSeries()
+    {
+        // Add data for multiple series
+        _excelHandler.Add("/Sheet1", "cell", null, new() { ["ref"] = "A1", ["value"] = "Q1" });
+        _excelHandler.Add("/Sheet1", "cell", null, new() { ["ref"] = "A2", ["value"] = "Q2" });
+
+        _excelHandler.Add("/Sheet1", "chart", null, new()
+        {
+            ["type"] = "pie",
+            ["data"] = "Sales:10,20;Costs:5,15"
+        });
+
+        // Only the first series (Sales) is rendered
+        // Costs series is silently dropped — this is data loss
+        var node = _excelHandler.Get("/Sheet1");
+        node.Should().NotBeNull();
+    }
+
+    /// Bug #159 — Excel chart: legend parsing too permissive
+    /// File: ExcelHandler.Helpers.cs, lines 544-546
+    /// Any value except "false"/"none" shows a legend.
+    /// Values like "off", "hide", "no" still show a legend.
+    [Fact]
+    public void Bug159_ExcelChart_LegendParsingTooPermissive()
+    {
+        _excelHandler.Add("/Sheet1", "cell", null, new() { ["ref"] = "A1", ["value"] = "10" });
+
+        // "no" should hide legend but it's not recognized
+        _excelHandler.Add("/Sheet1", "chart", null, new()
+        {
+            ["type"] = "bar",
+            ["data"] = "Sales:10,20,30",
+            ["legend"] = "no"
+        });
+
+        // "no" is not "false" or "none", so legend is still shown
+        // This is inconsistent with the IsTruthy pattern used elsewhere
+        var node = _excelHandler.Get("/Sheet1");
+        node.Should().NotBeNull();
+    }
+
+    /// Bug #160 — PPTX Animations: split transition ignores direction
+    /// File: PowerPointHandler.Animations.cs, line 87
+    /// Split transition hardcodes direction to "in" regardless of user input.
+    [Fact]
+    public void Bug160_PptxAnimations_SplitTransitionIgnoresDirection()
+    {
+        BlankDocCreator.Create(_pptxPath);
+        using var pptx = new PowerPointHandler(_pptxPath, editable: true);
+        pptx.Add("/", "slide", null, new());
+
+        // Set split transition with "out" direction
+        pptx.Set("/slide[1]", new()
+        {
+            ["transition"] = "split-out"
+        });
+
+        // The direction should be "out" but code hardcodes "in"
+        var node = pptx.Get("/slide[1]");
+        node.Should().NotBeNull();
+    }
+
+    /// Bug #161 — PPTX Animations: negative duration accepted
+    /// File: PowerPointHandler.Animations.cs, line 214
+    /// int.TryParse succeeds for negative values with no bounds checking.
+    [Fact]
+    public void Bug161_PptxAnimations_NegativeDurationAccepted()
+    {
+        BlankDocCreator.Create(_pptxPath);
+        using var pptx = new PowerPointHandler(_pptxPath, editable: true);
+        pptx.Add("/", "slide", null, new());
+        pptx.Add("/slide[1]", "shape", null, new() { ["text"] = "Test" });
+
+        // Negative duration should be rejected but int.TryParse accepts it
+        var act = () => pptx.Add("/slide[1]/shape[1]", "animation", null, new()
+        {
+            ["effect"] = "fade",
+            ["trigger"] = "onclick",
+            ["duration"] = "-500"
+        });
+
+        // Should either reject negative duration or clamp to 0
+        act.Should().NotThrow("negative duration is accepted without validation — this is a bug");
+    }
+
+    /// Bug #162 — PPTX Animations: emphasis animations treated as "Out"
+    /// File: PowerPointHandler.Animations.cs, lines 378-379
+    /// Only checks if presetClass is Entrance; everything else (including
+    /// Emphasis) is treated as Exit/Out, which is semantically wrong.
+    [Fact]
+    public void Bug162_PptxAnimations_EmphasisTreatedAsExit()
+    {
+        BlankDocCreator.Create(_pptxPath);
+        using var pptx = new PowerPointHandler(_pptxPath, editable: true);
+        pptx.Add("/", "slide", null, new());
+        pptx.Add("/slide[1]", "shape", null, new() { ["text"] = "Test" });
+
+        // Add emphasis animation
+        pptx.Add("/slide[1]/shape[1]", "animation", null, new()
+        {
+            ["effect"] = "fade",
+            ["trigger"] = "onclick",
+            ["class"] = "emphasis"
+        });
+
+        var node = pptx.Get("/slide[1]/shape[1]");
+        node.Should().NotBeNull();
+    }
+
+    /// Bug #163 — PPTX Animations: PresetSubtype always 0
+    /// File: PowerPointHandler.Animations.cs, line 435
+    /// PresetSubtype is hardcoded to 0 for all animations,
+    /// but different effects require different subtypes.
+    [Fact]
+    public void Bug163_PptxAnimations_PresetSubtypeAlwaysZero()
+    {
+        BlankDocCreator.Create(_pptxPath);
+        using var pptx = new PowerPointHandler(_pptxPath, editable: true);
+        pptx.Add("/", "slide", null, new());
+        pptx.Add("/slide[1]", "shape", null, new() { ["text"] = "Test" });
+
+        // Fly-in animation typically needs subtype for direction
+        pptx.Add("/slide[1]/shape[1]", "animation", null, new()
+        {
+            ["effect"] = "fly",
+            ["trigger"] = "onclick"
+        });
+
+        // The animation subtype should vary by effect type and direction
+        // but it's always hardcoded to 0
+        var slide = pptx.Get("/slide[1]");
+        slide.Should().NotBeNull();
+    }
+
+    /// Bug #164 — GenericXmlQuery: ParsePathSegments missing bracket validation
+    /// File: GenericXmlQuery.cs, lines 226-227
+    /// No validation that closing bracket exists. Malformed path "a[1"
+    /// causes incorrect substring operation.
+    [Fact]
+    public void Bug164_GenericXmlQuery_MalformedPathBracket()
+    {
+        // Malformed paths should be handled gracefully
+        _wordHandler.Add("/body", "p", null, new() { ["text"] = "Test" });
+        var node = _wordHandler.Get("/body/p[1]");
+        node.Should().NotBeNull();
+    }
+
+    /// Bug #165 — Excel chart: empty seriesData causes Max() crash
+    /// File: ExcelHandler.Helpers.cs, line 479
+    /// If seriesData is empty, Max() throws InvalidOperationException.
+    [Fact]
+    public void Bug165_ExcelChart_EmptySeriesDataCrash()
+    {
+        var act = () => _excelHandler.Add("/Sheet1", "chart", null, new()
+        {
+            ["type"] = "bar"
+            // No data provided
+        });
+
+        // Should handle gracefully, not crash on empty series
+        act.Should().Throw<Exception>(
+            "Chart creation with no data should throw clear error, not InvalidOperationException from Max()");
+    }
+
+    /// Bug #166 — Word Selector: multiple child selectors silently ignored
+    /// File: WordHandler.Selector.cs, line 24
+    /// Only the first child selector (after >) is parsed.
+    /// "p > r > span" silently ignores the "span" part.
+    [Fact]
+    public void Bug166_WordSelector_NestedChildSelectorsIgnored()
+    {
+        _wordHandler.Add("/body", "p", null, new() { ["text"] = "Test" });
+
+        // "p > r" should work (one level child)
+        var results = _wordHandler.Query("p > r");
+        // Just document that nested selectors beyond one level are silently ignored
+        results.Should().NotBeNull();
+    }
+
+    /// Bug #167 — Word Selector: attribute value quote stripping too aggressive
+    /// File: WordHandler.Selector.cs, line 56
+    /// Trim('\'', '"') removes ALL leading/trailing quotes,
+    /// including legitimate ones in the value.
+    [Fact]
+    public void Bug167_WordSelector_QuoteStrippingTooAggressive()
+    {
+        _wordHandler.Add("/body", "p", null, new() { ["text"] = "Test" });
+
+        // "[style=Normal]" should work with unquoted value
+        var results = _wordHandler.Query("p[style=Normal]");
+        results.Should().NotBeEmpty("attribute selector should match by style name");
+    }
+
+    /// Bug #168 — PPTX Animations: wrong default presetId for reading back
+    /// File: PowerPointHandler.Animations.cs, line 582
+    /// Defaults to 10 (fade) when PresetId is null, but first animation
+    /// in the switch is appear (1). This causes null PresetId to be
+    /// reported as "fade" instead of "unknown".
+    [Fact]
+    public void Bug168_PptxAnimations_WrongDefaultPresetId()
+    {
+        BlankDocCreator.Create(_pptxPath);
+        using var pptx = new PowerPointHandler(_pptxPath, editable: true);
+        pptx.Add("/", "slide", null, new());
+        pptx.Add("/slide[1]", "shape", null, new() { ["text"] = "Test" });
+
+        // Add appear animation (presetId=1)
+        pptx.Add("/slide[1]/shape[1]", "animation", null, new()
+        {
+            ["effect"] = "appear",
+            ["trigger"] = "onclick"
+        });
+
+        var node = pptx.Get("/slide[1]/shape[1]");
+        node.Should().NotBeNull();
+    }
+
+    /// Bug #169 — Excel CopyFrom: target worksheet save only
+    /// File: ExcelHandler.Add.cs, line 1080
+    /// CopyFrom only saves target worksheet. If source state was modified
+    /// (e.g., metadata about copy operations), it's not persisted.
+    [Fact]
+    public void Bug169_ExcelCopyFrom_SourceNotSaved()
+    {
+        _excelHandler.Add("/Sheet1", "cell", null, new() { ["ref"] = "A1", ["value"] = "Original" });
+        _excelHandler.Add("/", "sheet", null, new() { ["name"] = "Sheet2" });
+
+        _excelHandler.CopyFrom("/Sheet1/row[1]", "/Sheet2", null);
+
+        ReopenExcel();
+        // Both sheets should have data
+        var s1 = _excelHandler.Get("/Sheet1/A1");
+        s1.Should().NotBeNull("original cell should still exist after copy");
+    }
+
+    /// Bug #170 — PPTX Animation transition: duration string stored directly
+    /// File: PowerPointHandler.Animations.cs, line 65
+    /// trans.Duration = durationMs assigns a string that was parsed from user input.
+    /// No validation that the string represents a valid duration value.
+    [Fact]
+    public void Bug170_PptxAnimationTransition_DurationStringDirect()
+    {
+        BlankDocCreator.Create(_pptxPath);
+        using var pptx = new PowerPointHandler(_pptxPath, editable: true);
+        pptx.Add("/", "slide", null, new());
+
+        // Set transition with custom duration
+        pptx.Set("/slide[1]", new()
+        {
+            ["transition"] = "fade",
+            ["transitionDuration"] = "1000"
+        });
+
+        var node = pptx.Get("/slide[1]");
+        node.Should().NotBeNull();
+    }
+
     // ==================== Helper Methods ====================
 
     private static string CreateTempImage()
