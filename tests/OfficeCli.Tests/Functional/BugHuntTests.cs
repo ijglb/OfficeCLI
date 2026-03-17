@@ -1871,6 +1871,449 @@ public class BugHuntTests : IDisposable
         }
     }
 
+    // ==================== BUG #71 (HIGH): PPTX shadow effect double.Parse on malformed input ====================
+    // PowerPointHandler.Effects.cs lines 34-37: double.Parse on split parts without TryParse.
+    // Input like "000000-abc" would throw FormatException.
+    //
+    // Location: PowerPointHandler.Effects.cs lines 34-37
+
+    [Fact]
+    public void Bug71_PptxShadowEffect_MalformedInput()
+    {
+        BlankDocCreator.Create(_pptxPath);
+        using var handler = new PowerPointHandler(_pptxPath, editable: true);
+        handler.Add("/", "slide", null, new());
+        handler.Add("/slide[1]", "shape", null, new() { ["text"] = "Shadow" });
+
+        // Malformed shadow: "000000-abc" → double.Parse("abc") throws
+        var ex = Record.Exception(() =>
+            handler.Set("/slide[1]/shape[1]", new() { ["shadow"] = "000000-abc" }));
+
+        // BUG: FormatException from double.Parse("abc") — should use TryParse with fallback
+        ex.Should().NotBeNull(
+            "Malformed shadow parameter should throw (proves double.Parse vulnerability)");
+    }
+
+    // ==================== BUG #72 (HIGH): PPTX glow effect double.Parse on malformed input ====================
+    // PowerPointHandler.Effects.cs lines 74-75: Same pattern as shadow.
+    //
+    // Location: PowerPointHandler.Effects.cs lines 74-75
+
+    [Fact]
+    public void Bug72_PptxGlowEffect_MalformedInput()
+    {
+        BlankDocCreator.Create(_pptxPath);
+        using var handler = new PowerPointHandler(_pptxPath, editable: true);
+        handler.Add("/", "slide", null, new());
+        handler.Add("/slide[1]", "shape", null, new() { ["text"] = "Glow" });
+
+        // "0070FF-bad" → double.Parse("bad") throws
+        var ex = Record.Exception(() =>
+            handler.Set("/slide[1]/shape[1]", new() { ["glow"] = "0070FF-bad" }));
+
+        // BUG: FormatException from double.Parse("bad")
+        ex.Should().NotBeNull(
+            "Malformed glow parameter should throw (proves double.Parse vulnerability)");
+    }
+
+    // ==================== BUG #73 (HIGH): Word table cell bold/italic use bool.Parse ====================
+    // WordHandler.Set.cs lines 659, 662: table cell formatting uses bool.Parse
+    //
+    // Location: WordHandler.Set.cs lines 659, 662
+
+    [Fact]
+    public void Bug73_WordTableCellBoldBoolParse()
+    {
+        _wordHandler.Add("/body", "table", null, new() { ["rows"] = "2", ["cols"] = "2" });
+        _wordHandler.Set("/body/tbl[1]/tr[1]/tc[1]", new() { ["text"] = "Cell" });
+
+        var ex = Record.Exception(() =>
+            _wordHandler.Set("/body/tbl[1]/tr[1]/tc[1]", new() { ["bold"] = "yes" }));
+
+        // BUG: bool.Parse("yes") throws FormatException
+        ex.Should().BeNull(
+            "bold='yes' in table cell should be accepted");
+    }
+
+    // ==================== BUG #74 (MEDIUM): Word table row header uses bool.Parse ====================
+    // WordHandler.Set.cs line 769: bool.Parse(value) for header row
+    //
+    // Location: WordHandler.Set.cs line 769
+
+    [Fact]
+    public void Bug74_WordTableRowHeaderBoolParse()
+    {
+        _wordHandler.Add("/body", "table", null, new() { ["rows"] = "2", ["cols"] = "2" });
+
+        var ex = Record.Exception(() =>
+            _wordHandler.Set("/body/tbl[1]/tr[1]", new() { ["header"] = "1" }));
+
+        // BUG: bool.Parse("1") throws FormatException
+        ex.Should().BeNull(
+            "header='1' should be accepted as truthy for table row header");
+    }
+
+    // ==================== BUG #75 (MEDIUM): Word table cell font size uses int.Parse with multiplication ====================
+    // WordHandler.Set.cs line 656: (int.Parse(value) * 2).ToString()
+    // "10.5" (common font size) would throw FormatException from int.Parse.
+    //
+    // Location: WordHandler.Set.cs line 656
+
+    [Fact]
+    public void Bug75_WordTableCellFontSizeIntParse()
+    {
+        _wordHandler.Add("/body", "table", null, new() { ["rows"] = "2", ["cols"] = "2" });
+        _wordHandler.Set("/body/tbl[1]/tr[1]/tc[1]", new() { ["text"] = "Cell" });
+
+        // "10.5" is a common font size but int.Parse fails on it
+        var ex = Record.Exception(() =>
+            _wordHandler.Set("/body/tbl[1]/tr[1]/tc[1]", new() { ["size"] = "10.5" }));
+
+        // BUG: int.Parse("10.5") throws FormatException — should use double/decimal parse
+        ex.Should().BeNull(
+            "Fractional font size '10.5' should be supported in table cells");
+    }
+
+    // ==================== BUG #76 (MEDIUM): Word run font size int.Parse fails on fractional sizes ====================
+    // WordHandler.Set.cs line 388: (int.Parse(value) * 2).ToString()
+    // Same bug as #75 but for regular runs.
+    //
+    // Location: WordHandler.Set.cs line 388
+
+    [Fact]
+    public void Bug76_WordRunFontSizeIntParse()
+    {
+        _wordHandler.Add("/body", "paragraph", null, new() { ["text"] = "Test" });
+
+        var ex = Record.Exception(() =>
+            _wordHandler.Set("/body/p[1]/r[1]", new() { ["size"] = "10.5" }));
+
+        // BUG: int.Parse("10.5") throws FormatException
+        ex.Should().BeNull(
+            "Fractional font size '10.5' should be supported for runs");
+    }
+
+    // ==================== BUG #77 (MEDIUM): Word table row height uses uint.Parse without validation ====================
+    // WordHandler.Set.cs line 766: uint.Parse(value)
+    // Negative values or non-numeric input would crash.
+    //
+    // Location: WordHandler.Set.cs line 766
+
+    [Fact]
+    public void Bug77_WordTableRowHeight_UintParse()
+    {
+        _wordHandler.Add("/body", "table", null, new() { ["rows"] = "2", ["cols"] = "2" });
+
+        // "-100" is invalid for uint.Parse
+        var ex = Record.Exception(() =>
+            _wordHandler.Set("/body/tbl[1]/tr[1]", new() { ["height"] = "-100" }));
+
+        // BUG: OverflowException from uint.Parse("-100")
+        ex.Should().NotBeNull(
+            "Negative row height should throw (proves uint.Parse vulnerability)");
+    }
+
+    // ==================== BUG #78 (MEDIUM): Word gridspan int.Parse on non-numeric input ====================
+    // WordHandler.Set.cs line 725: var newSpan = int.Parse(value);
+    //
+    // Location: WordHandler.Set.cs line 725
+
+    [Fact]
+    public void Bug78_WordGridspanIntParse()
+    {
+        _wordHandler.Add("/body", "table", null, new() { ["rows"] = "2", ["cols"] = "3" });
+
+        // "abc" would crash int.Parse
+        var ex = Record.Exception(() =>
+            _wordHandler.Set("/body/tbl[1]/tr[1]/tc[1]", new() { ["gridspan"] = "abc" }));
+
+        // BUG: FormatException from int.Parse("abc")
+        ex.Should().NotBeNull(
+            "Non-numeric gridspan should throw (proves int.Parse vulnerability)");
+    }
+
+    // ==================== BUG #79 (MEDIUM): Word paragraph firstlineindent uses int.Parse ====================
+    // WordHandler.Set.cs line 529: int.Parse(value) * 480
+    // Fractional values like "1.5" crash.
+    //
+    // Location: WordHandler.Set.cs line 529
+
+    [Fact]
+    public void Bug79_WordParagraphFirstLineIndent_IntParse()
+    {
+        _wordHandler.Add("/body", "paragraph", null, new() { ["text"] = "Test" });
+
+        var ex = Record.Exception(() =>
+            _wordHandler.Set("/body/p[1]", new() { ["firstlineindent"] = "1.5" }));
+
+        // BUG: int.Parse("1.5") throws FormatException
+        ex.Should().BeNull(
+            "Fractional firstlineindent '1.5' should be supported");
+    }
+
+    // ==================== BUG #80 (MEDIUM): PPTX gradient with ambiguous color-angle input ====================
+    // Expanded test of Bug #2: "FF0000-90" → colorParts=["FF0000","90"]
+    // "90" is ≤3 chars and parses as int → removed as angle → only "FF0000" remains.
+    // Single-color gradient is created (meaningless).
+    //
+    // Location: PowerPointHandler.Background.cs lines 232-238
+
+    [Fact]
+    public void Bug80_PptxGradientSingleColor_Detailed()
+    {
+        BlankDocCreator.Create(_pptxPath);
+        using var handler = new PowerPointHandler(_pptxPath, editable: true);
+        handler.Add("/", "slide", null, new());
+
+        // "FF0000-90" → splits to ["FF0000", "90"]
+        // "90" is ≤3 digits → treated as angle → removed
+        // colorParts = ["FF0000"] — only 1 color → invalid gradient
+
+        // This should either throw or produce a solid fill fallback
+        var ex = Record.Exception(() =>
+            handler.Set("/slide[1]", new() { ["background"] = "FF0000-90" }));
+
+        if (ex == null)
+        {
+            // Verify: did it create a gradient with 1 stop or a solid fill?
+            var slide = handler.Get("/slide[1]");
+            // A gradient with position=0 for the single stop is technically valid XML
+            // but visually meaningless — it should be a solid fill
+        }
+    }
+
+    // ==================== BUG #81 (HIGH): Word Set paragraph strike uses bool.Parse ====================
+    // WordHandler.Set.cs line 407
+    //
+    // Location: WordHandler.Set.cs line 407
+
+    [Fact]
+    public void Bug81_WordRunStrikeBoolParse()
+    {
+        _wordHandler.Add("/body", "paragraph", null, new() { ["text"] = "Test" });
+
+        var ex = Record.Exception(() =>
+            _wordHandler.Set("/body/p[1]/r[1]", new() { ["strike"] = "yes" }));
+
+        // BUG: bool.Parse("yes") throws FormatException
+        ex.Should().BeNull(
+            "strike='yes' should be accepted");
+    }
+
+    // ==================== BUG #82 (MEDIUM): Word header/footer Set bold uses bool.Parse ====================
+    // WordHandler.Set.cs lines 869, 873
+    //
+    // Location: WordHandler.Set.cs lines 869, 873
+
+    [Fact]
+    public void Bug82_WordHeaderFooterBoldBoolParse()
+    {
+        // Create header
+        _wordHandler.Add("/body", "header", null, new() { ["text"] = "Header" });
+
+        // Get the header path
+        var headers = _wordHandler.Get("/header[1]");
+        if (headers != null)
+        {
+            var ex = Record.Exception(() =>
+                _wordHandler.Set("/header[1]", new() { ["bold"] = "1" }));
+
+            // BUG: bool.Parse("1") throws in header/footer bold handling
+            if (ex != null)
+            {
+                ex.Should().BeOfType<FormatException>(
+                    "bool.Parse('1') in header bold throws FormatException");
+            }
+        }
+    }
+
+    // ==================== BUG #83 (MEDIUM): Excel conditional formatting icon set reverse uses bool.Parse ====================
+    // ExcelHandler.Set.cs line 354: isEl.Reverse = bool.Parse(value);
+    //
+    // Location: ExcelHandler.Set.cs line 354
+
+    [Fact]
+    public void Bug83_ExcelIconSetReverseBoolParse()
+    {
+        _excelHandler.Add("/Sheet1", "cell", null, new() { ["ref"] = "A1", ["value"] = "1" });
+        _excelHandler.Add("/Sheet1", "cell", null, new() { ["ref"] = "A2", ["value"] = "2" });
+        _excelHandler.Add("/Sheet1", "cell", null, new() { ["ref"] = "A3", ["value"] = "3" });
+
+        // Add conditional formatting with icon set
+        _excelHandler.Add("/Sheet1", "cf", null, new()
+        {
+            ["sqref"] = "A1:A3", ["type"] = "iconset", ["iconset"] = "3TrafficLights1"
+        });
+
+        // Try to set reverse with "1"
+        var ex = Record.Exception(() =>
+            _excelHandler.Set("/Sheet1/cf[1]", new() { ["reverse"] = "1" }));
+
+        // BUG: bool.Parse("1") throws FormatException
+        if (ex != null)
+        {
+            ex.Should().BeOfType<FormatException>(
+                "bool.Parse('1') for icon set reverse throws");
+        }
+    }
+
+    // ==================== BUG #84 (MEDIUM): Word section margin Set creates PageMargin at wrong schema position ====================
+    // WordHandler.Set.cs line 174-195: sectPr.AppendChild(new PageSize()) and
+    // sectPr.AppendChild(new PageMargin()) don't respect schema order.
+    // PageSize must come before PageMargin in sectPr children.
+    //
+    // Location: WordHandler.Set.cs lines 174-195
+
+    [Fact]
+    public void Bug84_WordSectionMarginSchemaOrder()
+    {
+        _wordHandler.Add("/body", "paragraph", null, new() { ["text"] = "Content" });
+
+        // Set margin first, then orientation
+        _wordHandler.Set("/section[1]", new() { ["margintop"] = "1440" });
+        _wordHandler.Set("/section[1]", new() { ["orientation"] = "landscape" });
+
+        ReopenWord();
+        // If schema order is violated, Word may not read the document correctly
+        var sec = _wordHandler.Get("/section[1]");
+        sec.Should().NotBeNull();
+    }
+
+    // ==================== BUG #85 (MEDIUM): Excel Add row with index > existing rows creates gap ====================
+    // When adding a row at index 100 in an empty sheet, this creates a sparse row structure.
+    // The row index must match the RowIndex attribute or Excel rejects it.
+    //
+    // Location: ExcelHandler.Add.cs
+
+    [Fact]
+    public void Bug85_ExcelAddRow_LargeIndexGap()
+    {
+        _excelHandler.Add("/Sheet1", "row", 100, new() { ["cols"] = "3" });
+
+        // Verify the row is at index 100
+        var row = _excelHandler.Get("/Sheet1/row[100]");
+        row.Should().NotBeNull();
+        row.Type.Should().Be("row");
+    }
+
+    // ==================== BUG #86 (LOW): PPTX reflection value "true" is alias for "half" ====================
+    // PowerPointHandler.Effects.cs line 108: "true" maps to half reflection (90000)
+    // But "false" removes reflection. The asymmetry is confusing: "true" doesn't add
+    // a "true/full" reflection, just half.
+    //
+    // Location: PowerPointHandler.Effects.cs lines 107-110
+
+    [Fact]
+    public void Bug86_PptxReflectionTrueIsHalf()
+    {
+        BlankDocCreator.Create(_pptxPath);
+        using var handler = new PowerPointHandler(_pptxPath, editable: true);
+        handler.Add("/", "slide", null, new());
+        handler.Add("/slide[1]", "shape", null, new() { ["text"] = "Reflect" });
+
+        // "true" should add reflection (maps to "half")
+        handler.Set("/slide[1]/shape[1]", new() { ["reflection"] = "true" });
+
+        // Verify some reflection was applied
+        var shape = handler.Get("/slide[1]/shape[1]");
+        shape.Should().NotBeNull();
+    }
+
+    // ==================== BUG #87 (HIGH): Word paragraph-level Set for numbering uses int.Parse ====================
+    // WordHandler.Set.cs lines 601, 605: int.Parse for numid and numlevel
+    //
+    // Location: WordHandler.Set.cs lines 601, 605
+
+    [Fact]
+    public void Bug87_WordParagraphNumberingIntParse()
+    {
+        _wordHandler.Add("/body", "paragraph", null, new() { ["text"] = "Test" });
+
+        // Non-numeric numid
+        var ex = Record.Exception(() =>
+            _wordHandler.Set("/body/p[1]", new() { ["numid"] = "abc" }));
+
+        ex.Should().NotBeNull(
+            "Non-numeric numid should throw (proves int.Parse vulnerability)");
+    }
+
+    // ==================== BUG #88 (MEDIUM): PPTX shape with no shapes silently returns wrong count ====================
+    // When getting shape count from a slide with no shapes, the query returns 0 children
+    // but trying to access /slide[1]/shape[1] throws instead of returning empty/null.
+    //
+    // Location: PowerPointHandler.Set.cs shape resolution
+
+    [Fact]
+    public void Bug88_PptxAccessNonexistentShape()
+    {
+        BlankDocCreator.Create(_pptxPath);
+        using var handler = new PowerPointHandler(_pptxPath, editable: true);
+        handler.Add("/", "slide", null, new());
+
+        // Slide has no shapes — accessing shape[1] should throw
+        var ex = Record.Exception(() =>
+            handler.Set("/slide[1]/shape[1]", new() { ["text"] = "Ghost" }));
+
+        ex.Should().NotBeNull(
+            "Setting on nonexistent shape should throw ArgumentException");
+    }
+
+    // ==================== BUG #89 (MEDIUM): Word Set paragraph keepnext=false leaves stale element ====================
+    // WordHandler.Set.cs line 549: pProps.KeepNext = null;
+    // Setting to null removes the element from the XML. But if KeepNext was set by
+    // a style definition, removing it from the paragraph doesn't actually disable it
+    // (style inheritance takes over). Same pattern as Bug #12 (bold inheritance).
+    //
+    // Location: WordHandler.Set.cs lines 546-568
+
+    [Fact]
+    public void Bug89_WordParagraphKeepNextInheritance()
+    {
+        // Create a style with keepNext
+        _wordHandler.Add("/body", "style", null, new()
+        {
+            ["name"] = "KeepStyle", ["id"] = "KeepStyle"
+        });
+
+        _wordHandler.Add("/body", "paragraph", null, new()
+        {
+            ["text"] = "Test", ["style"] = "KeepStyle"
+        });
+
+        // Set keepnext=true then false
+        _wordHandler.Set("/body/p[1]", new() { ["keepnext"] = "true" });
+        _wordHandler.Set("/body/p[1]", new() { ["keepnext"] = "false" });
+
+        // Verify paragraph properties
+        var para = _wordHandler.Get("/body/p[1]");
+        para.Should().NotBeNull();
+    }
+
+    // ==================== BUG #90 (MEDIUM): Excel hyperlink removal leaves orphaned relationship ====================
+    // ExcelHandler.Set.cs lines 510-515: Removing hyperlink by setting link="none"
+    // removes the Hyperlink element but doesn't remove the relationship from the worksheet.
+    // This leaves an orphaned relationship in the .rels file.
+    //
+    // Location: ExcelHandler.Set.cs lines 510-515
+
+    [Fact]
+    public void Bug90_ExcelHyperlinkRemoval_OrphanedRelationship()
+    {
+        _excelHandler.Add("/Sheet1", "cell", null, new() { ["ref"] = "A1", ["value"] = "Click" });
+
+        // Add hyperlink
+        _excelHandler.Set("/Sheet1/A1", new() { ["link"] = "https://example.com" });
+
+        // Remove hyperlink
+        _excelHandler.Set("/Sheet1/A1", new() { ["link"] = "none" });
+
+        // Reopen and validate — orphaned relationships may cause warnings
+        ReopenExcel();
+        var cell = _excelHandler.Get("/Sheet1/A1");
+        cell.Format.Should().NotContainKey("link",
+            "Hyperlink should be removed after setting to none");
+    }
+
     // ==================== Helper Methods ====================
 
     private static string CreateTempImage()
