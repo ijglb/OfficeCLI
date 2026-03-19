@@ -285,7 +285,7 @@ public partial class BugHuntTests
     [Fact]
     public void Bug467_EmuConverter_RemUnitReportsEmInErrorMessage()
     {
-        var ex = Assert.Throws<FormatException>(() => EmuConverter.ParseEmu("5rem"));
+        var ex = Assert.Throws<ArgumentException>(() => EmuConverter.ParseEmu("5rem"));
         // BUG: error message says 'em' not 'rem' because "5rem".EndsWith("em") == true
         ex.Message.Should().Contain("rem",
             "error message for '5rem' should mention 'rem', not 'em', " +

@@ -310,7 +310,7 @@ public partial class BugHuntTests
                 ["width"] = "cm"
             });
 
-            act.Should().Throw<FormatException>(
+            act.Should().Throw<ArgumentException>(
                 "ParseEmu crashes on 'cm' (no number) — should validate input length");
         }
         finally
@@ -334,7 +334,7 @@ public partial class BugHuntTests
                 ["width"] = "50mm"
             });
 
-            act.Should().Throw<FormatException>(
+            act.Should().Throw<ArgumentException>(
                 "ParseEmu doesn't support 'mm' unit — falls through to long.Parse('50mm')");
         }
         finally
