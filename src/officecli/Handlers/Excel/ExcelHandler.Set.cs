@@ -660,6 +660,8 @@ public partial class ExcelHandler
                         hyperlinksEl?.Elements<Hyperlink>()
                             .Where(h => h.Reference?.Value?.Equals(cellRef, StringComparison.OrdinalIgnoreCase) == true)
                             .ToList().ForEach(h => h.Remove());
+                        if (hyperlinksEl != null && !hyperlinksEl.HasChildren)
+                            hyperlinksEl.Remove();
                     }
                     else
                     {
