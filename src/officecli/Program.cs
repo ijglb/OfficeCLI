@@ -247,7 +247,9 @@ queryCommand.SetAction(result => SafeRun(() =>
     var format = json ? OutputFormat.Json : OutputFormat.Text;
 
     using var handler = DocumentHandlerFactory.Open(file.FullName);
-    var results = handler.Query(selector);
+    var filters = OfficeCli.Core.AttributeFilter.Parse(selector);
+    var (results, warnings) = OfficeCli.Core.AttributeFilter.ApplyWithWarnings(handler.Query(selector), filters);
+    foreach (var w in warnings) Console.Error.WriteLine(w);
     Console.WriteLine(OutputFormatter.FormatNodes(results, format));
 }));
 
@@ -759,7 +761,9 @@ static string ExecuteBatchItem(OfficeCli.Core.IDocumentHandler handler, BatchIte
         case "query":
         {
             var selector = item.Selector ?? "";
-            var results = handler.Query(selector);
+            var filters = OfficeCli.Core.AttributeFilter.Parse(selector);
+            var (results, warnings) = OfficeCli.Core.AttributeFilter.ApplyWithWarnings(handler.Query(selector), filters);
+            foreach (var w in warnings) Console.Error.WriteLine(w);
             return OfficeCli.Core.OutputFormatter.FormatNodes(results, format);
         }
         case "set":

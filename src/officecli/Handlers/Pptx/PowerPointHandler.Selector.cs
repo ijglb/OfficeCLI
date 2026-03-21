@@ -65,6 +65,7 @@ public partial class PowerPointHandler
                     if (op == "~=")
                     {
                         // ~= is a "contains" match — store with special prefix
+                        // Also handled by AttributeFilter post-filter (idempotent)
                         genericAttrs[key] = ($"\x01~={val}", false);
                     }
                     else
@@ -169,14 +170,14 @@ public partial class PowerPointHandler
             if (negate)
             {
                 // [attr!=value]: must not equal
-                if (hasKey && string.Equals(actualStr, expected, StringComparison.OrdinalIgnoreCase))
+                if (hasKey && NormalizedEquals(actualStr, expected))
                     return false;
             }
             else
             {
                 // [attr=value]: must exist and equal
                 if (!hasKey) return false;
-                if (!string.Equals(actualStr, expected, StringComparison.OrdinalIgnoreCase))
+                if (!NormalizedEquals(actualStr, expected))
                 {
                     // Special case: boolean properties stored as `true`/`True` matching "true"
                     if (actual is bool b && string.Equals(expected, b.ToString(), StringComparison.OrdinalIgnoreCase))
@@ -192,6 +193,21 @@ public partial class PowerPointHandler
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Case-insensitive comparison that also normalizes '#' prefix for color hex values.
+    /// "#FF0000" equals "FF0000" and vice versa.
+    /// </summary>
+    private static bool NormalizedEquals(string a, string b)
+    {
+        if (string.Equals(a, b, StringComparison.OrdinalIgnoreCase))
+            return true;
+        var aNorm = a.TrimStart('#');
+        var bNorm = b.TrimStart('#');
+        if (aNorm != a || bNorm != b)
+            return string.Equals(aNorm, bNorm, StringComparison.OrdinalIgnoreCase);
+        return false;
     }
 
     private static bool MatchesPictureSelector(Picture pic, ShapeSelector selector)

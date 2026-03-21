@@ -183,14 +183,24 @@ Word (.docx) — query
 =====================
 
 Element types:  paragraph (p), run (r), table (tbl), picture, equation, header, footer, bookmark, chart
-Attribute filters:  [attr=value], [attr!=value]
+Attribute filters:  [attr=value], [attr!=value], [attr~=text], [attr>=value], [attr<=value]
 Pseudo-selectors:   :contains("text"), :empty, :no-alt, :has(formula)
 Child combinator:   paragraph > run[bold=true]
 Generic XML:        Falls back to any XML element name (e.g. wsp, srgbClr[val=0070C0])
 
+Filter operators (apply to any Format property or text):
+  =          Exact match              [style=Heading1]
+  !=         Not equal                [font!=Arial]
+  ~=         Contains text            [text~=季度报告]
+  >=         Numeric greater/equal    [size>=24pt]
+  <=         Numeric less/equal       [size<=12pt]
+  Combined:  paragraph[style=Heading1][size>=14pt]
+
 Examples:
   officecli query doc.docx 'paragraph[style=Heading1]'
   officecli query doc.docx 'run[bold=true]'
+  officecli query doc.docx 'run[size>=14pt]'
+  officecli query doc.docx 'paragraph[text~=报告]'
   officecli query doc.docx 'paragraph:contains("error")'
   officecli query doc.docx 'paragraph:empty'
   officecli query doc.docx 'picture:no-alt'
@@ -218,13 +228,21 @@ Run properties (/body/p[N]/r[M]):
   caps, smallCaps, superscript, subscript, dstrike, vanish, outline,
   shadow, emboss, imprint, noProof, rtl,
   shd (format: "fill" or "pattern;fill" or "pattern;fill;color")
+  w14 text effects (Word 2010+, use ; as separator, - also accepted):
+    textOutline   Text stroke: "WIDTHpt;COLOR" (e.g. "0.5pt;FF0000"), "none" to remove
+    textFill      Text fill gradient: "C1;C2[;ANGLE]", "radial:C1;C2", or solid "COLOR"
+    w14shadow     Advanced text shadow: "COLOR[;BLUR[;ANGLE[;DIST[;OPACITY]]]]"
+    w14glow       Text glow: "COLOR[;RADIUS[;OPACITY]]"
+    w14reflection Text reflection: "tight", "half", "full"
   For images in runs: alt, width, height (cm/in/pt/px or raw EMU),
     path/src (replace image file, removes old image part to avoid bloat)
 
 Paragraph properties (/body/p[N]):
   style, alignment (left|center|right|justify),
   firstLineIndent, leftIndent, rightIndent, hangingIndent (twips),
-  shd, spaceBefore, spaceAfter, lineSpacing, numId, numLevel/ilvl,
+  shd, spaceBefore, spaceAfter (unit-qualified: '12pt', '0.5cm', '0.5in', or bare twips),
+  lineSpacing (unit-qualified: '1.5x' multiplier, '150%', '18pt' fixed, or bare twips),
+  numId, numLevel/ilvl,
   listStyle (bullet|numbered|none), start (numbering start value),
   keepNext, keepLines, pageBreakBefore, widowControl (bool)
 
@@ -298,7 +316,7 @@ Bookmark (/bookmark[Name]):
 
 Style (/styles/StyleId):
   name, basedon, next, font, size, bold, italic, color,
-  alignment, spacebefore, spaceafter
+  alignment, spacebefore, spaceafter (unit-qualified: '12pt', '0.5cm', or bare twips)
 
 Watermark (/watermark):
   text, color, font, opacity, rotation
@@ -370,7 +388,9 @@ Types and properties:
     text, font, size, bold, italic, color, underline, strike, highlight,
     caps, smallCaps, superscript, subscript, style, alignment,
     firstLineIndent, leftIndent, rightIndent, hangingIndent,
-    spaceBefore, spaceAfter, lineSpacing, numId, numLevel, shd,
+    spaceBefore, spaceAfter (unit-qualified: '12pt', '0.5cm', or bare twips),
+    lineSpacing (unit-qualified: '1.5x', '150%', '18pt', or bare twips),
+    numId, numLevel, shd,
     listStyle, start, keepNext, keepLines, pageBreakBefore, widowControl
 
   run (r)  -- parent: /body/p[N]
@@ -455,7 +475,7 @@ Types and properties:
   style  -- parent: /body (creates in styles part)
     name (required), id, type (paragraph|character|table),
     basedon, next, font, size, bold, italic, color,
-    alignment, spacebefore, spaceafter
+    alignment, spacebefore, spaceafter (unit-qualified: '12pt', '0.5cm', or bare twips)
 
   watermark  -- parent: / (creates VML text watermark in headers)
     text (default: DRAFT), color (default: silver), font (default: Calibri),
@@ -640,6 +660,14 @@ Pseudo-selectors:
   :empty                        Empty cells
   :has(formula)                 Cells with formulas
 
+Filter operators (apply to any Format property or text):
+  =          Exact match              [value=100]
+  !=         Not equal                [type!=Number]
+  ~=         Contains text            [text~=季度]
+  >=         Numeric greater/equal    [font.size>=14pt]
+  <=         Numeric less/equal       [font.size<=10pt]
+  Combined:  cell[font.bold=true][font.size>=14pt]
+
 Falls back to generic XML element navigation for advanced queries.
 
 Examples:
@@ -648,6 +676,7 @@ Examples:
   officecli query data.xlsx 'A'
   officecli query data.xlsx 'cell:contains("error")'
   officecli query data.xlsx 'cell[type=Number]'
+  officecli query data.xlsx 'cell[text~=季度]'
   officecli query data.xlsx 'validation'
   officecli query data.xlsx 'comment'
   officecli query data.xlsx 'table'
@@ -1045,8 +1074,8 @@ Format keys returned by Get:
     line, lineWidth, lineDash, lineOpacity (0.0–1.0)
     preset                 Shape geometry name
     align, valign
-    lineSpacing            Multiplier (e.g. 1.5) from first paragraph
-    spaceBefore, spaceAfter  Points from first paragraph
+    lineSpacing            Unit-qualified: "1.5x" (multiplier) or "18pt" (fixed)
+    spaceBefore, spaceAfter  Unit-qualified: "12pt" from first paragraph
     margin                 Text padding
     rotation               Degrees
     autoFit                normal / shape / none
@@ -1110,6 +1139,14 @@ Filters:
   :contains("text")  Shapes/tables containing text (case-insensitive)
   :no-alt            Pictures without alt text
 
+Filter operators (apply to any Format property or text):
+  =          Exact match              [fill=FF0000]
+  !=         Not equal                [type!=placeholder]
+  ~=         Contains text            [text~=季度报告]
+  >=         Numeric greater/equal    [size>=24pt]
+  <=         Numeric less/equal       [size<=12pt]
+  Combined:  shape[fill=FF0000][size>=24pt]
+
 Scope by slide:
   slide[N] shape     Only shapes in slide N
 
@@ -1119,6 +1156,9 @@ Examples:
   officecli query pres.pptx 'shape'
   officecli query pres.pptx 'slide[1] shape'
   officecli query pres.pptx 'title'
+  officecli query pres.pptx 'title[fill=FF0000][size>=24pt]'
+  officecli query pres.pptx 'shape[text~=季度报告]'
+  officecli query pres.pptx 'shape[bold=true][fill=FF0000]'
   officecli query pres.pptx 'table'
   officecli query pres.pptx 'table:contains("revenue")'
   officecli query pres.pptx 'placeholder'
@@ -1159,9 +1199,9 @@ Shape properties (/slide[N]/shape[M]) -- applies to all runs:
   margin     Text padding inside shape (e.g. 0.5cm or left,top,right,bottom: 0.5cm,0.3cm,0.5cm,0.3cm)
   align      Text horizontal alignment: left (l), center (c), right (r), justify (j) — applies to all paragraphs
   valign     Text vertical alignment: top (t), center/middle (c/m), bottom (b)
-  lineSpacing  Line spacing multiplier (e.g. 1.5 for 150%)
-  spaceBefore  Space before paragraphs in points (e.g. 6)
-  spaceAfter   Space after paragraphs in points (e.g. 6)
+  lineSpacing  Unit-qualified: '1.5x' (multiplier), '150%', '18pt' (fixed), or bare multiplier
+  spaceBefore  Unit-qualified: '12pt', '0.5cm', '0.5in', or bare points
+  spaceAfter   Unit-qualified: '6pt', '0.5cm', '0.5in', or bare points
   gradient   Linear: C1-C2[-angle], Radial: radial:C1-C2[-focus] (focus: tl/tr/bl/br/center)
   image      Shape image fill (path to image file, e.g. /tmp/bg.png)
   list       List style: bullet/numbered/alpha/roman/none or a custom character (e.g. ✓)
@@ -1339,7 +1379,8 @@ Paragraph properties (/slide[N]/shape[M]/paragraph[P]):
   indent     First-line indent (EMU or cm/pt, negative for hanging)
   marginLeft Left margin (alias: marL)
   marginRight Right margin (alias: marR)
-  lineSpacing, spaceBefore, spaceAfter
+  lineSpacing (unit-qualified: '1.5x', '150%', '18pt', or bare multiplier)
+  spaceBefore, spaceAfter (unit-qualified: '12pt', '0.5cm', or bare points)
   Plus all run-level properties above
 
 Run properties (/slide[N]/shape[M]/run[K] or /slide[N]/shape[M]/paragraph[P]/run[K]):
@@ -1400,7 +1441,9 @@ Types and properties:
     margin (text padding: 0.5cm or left,top,right,bottom),
     align (left/center/right/justify), valign (top/center/bottom),
     gradient (e.g. FF0000-0000FF-90), list (bullet/numbered/alpha/roman),
-    lineSpacing, spaceBefore, spaceAfter, rotation, opacity, autoFit,
+    lineSpacing ('1.5x', '150%', '18pt', or bare multiplier),
+    spaceBefore, spaceAfter ('12pt', '0.5cm', or bare points),
+    rotation, opacity, autoFit,
     preset (shape geometry: rect, roundRect, ellipse, triangle, diamond, pentagon, hexagon,
             star5, rightArrow, leftArrow, chevron, plus, heart, cloud, cube, can, line,
             callout, process, decision, smiley, frame, gear6, ...),

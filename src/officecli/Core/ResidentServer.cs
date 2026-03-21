@@ -309,7 +309,9 @@ public class ResidentServer : IDisposable
     private void ExecuteQuery(ResidentRequest req, OutputFormat format)
     {
         var selector = req.GetArg("selector", "");
-        var results = _handler.Query(selector);
+        var filters = AttributeFilter.Parse(selector);
+        var (results, warnings) = AttributeFilter.ApplyWithWarnings(_handler.Query(selector), filters);
+        foreach (var w in warnings) Console.Error.WriteLine(w);
         Console.WriteLine(OutputFormatter.FormatNodes(results, format));
     }
 

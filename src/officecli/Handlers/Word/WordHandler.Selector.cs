@@ -16,7 +16,8 @@ public partial class WordHandler
     private static SelectorPart ParseSelector(string selector)
     {
         // Support: element[attr=value] > child[attr=value]
-        var childParts = selector.Split('>').Select(s => s.Trim()).ToArray();
+        // Split on '>' but skip '>' inside [...] brackets (e.g. [size>=14pt])
+        var childParts = SplitChildCombinator(selector);
 
         SelectorPart? childSelector = null;
         if (childParts.Length > 1)
@@ -26,6 +27,31 @@ public partial class WordHandler
 
         var main = ParseSingleSelector(childParts[0]);
         return main with { ChildSelector = childSelector };
+    }
+
+    /// <summary>
+    /// Split selector on '>' child combinator, but skip '>' inside [...] brackets.
+    /// "paragraph[size>=14pt] > run[bold=true]" → ["paragraph[size>=14pt]", "run[bold=true]"]
+    /// </summary>
+    private static string[] SplitChildCombinator(string selector)
+    {
+        int depth = 0;
+        for (int i = 0; i < selector.Length; i++)
+        {
+            switch (selector[i])
+            {
+                case '[': depth++; break;
+                case ']': depth--; break;
+                case '>' when depth == 0:
+                    // Found a top-level '>' combinator
+                    return new[]
+                    {
+                        selector[..i].Trim(),
+                        selector[(i + 1)..].Trim()
+                    };
+            }
+        }
+        return new[] { selector };
     }
 
     private static SelectorPart ParseSingleSelector(string selector)
