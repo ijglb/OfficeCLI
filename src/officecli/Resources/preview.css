@@ -213,7 +213,7 @@ body.sidebar-hidden .sidebar-toggle { left: 8px; }
 .shape-text.valign-center { justify-content: center; }
 .shape-text.valign-bottom { justify-content: flex-end; }
 .para { width: 100%; line-height: 1; }
-.picture { position: absolute; }
+.picture { position: absolute; overflow: hidden; }
 .picture img { width: 100%; height: 100%; object-fit: fill; }
 .table-container { position: absolute; overflow: hidden; }
 .slide-table { width: 100%; height: 100%; border-collapse: collapse; table-layout: fixed; }
