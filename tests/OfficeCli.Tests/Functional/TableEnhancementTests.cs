@@ -759,6 +759,95 @@ public class TableEnhancementTests : IDisposable
         }
     }
 
+    // ==================== Set Row c1/c2 Shorthand ====================
+
+    [Fact]
+    public void Word_SetRow_CellShorthand_UpdatesText()
+    {
+        // 1. Create table 2x3 and populate initial text via individual cell Set
+        _wordHandler.Add("/", "table", null, new() { ["rows"] = "2", ["cols"] = "3" });
+        _wordHandler.Set("/body/tbl[1]/tr[1]/tc[1]", new() { ["text"] = "A" });
+        _wordHandler.Set("/body/tbl[1]/tr[1]/tc[2]", new() { ["text"] = "B" });
+        _wordHandler.Set("/body/tbl[1]/tr[1]/tc[3]", new() { ["text"] = "C" });
+
+        // 2. Verify initial row via cells
+        _wordHandler.Get("/body/tbl[1]/tr[1]/tc[1]").Text.Should().Be("A");
+        _wordHandler.Get("/body/tbl[1]/tr[1]/tc[2]").Text.Should().Be("B");
+
+        // 3. Set row cells via c1/c2/c3 shorthand
+        _wordHandler.Set("/body/tbl[1]/tr[1]", new() { ["c1"] = "X", ["c2"] = "Y", ["c3"] = "Z" });
+
+        // 4. Verify updated
+        _wordHandler.Get("/body/tbl[1]/tr[1]/tc[1]").Text.Should().Be("X");
+        _wordHandler.Get("/body/tbl[1]/tr[1]/tc[2]").Text.Should().Be("Y");
+        _wordHandler.Get("/body/tbl[1]/tr[1]/tc[3]").Text.Should().Be("Z");
+
+        // 5. Persistence
+        ReopenWord();
+        _wordHandler.Get("/body/tbl[1]/tr[1]/tc[1]").Text.Should().Be("X");
+        _wordHandler.Get("/body/tbl[1]/tr[1]/tc[2]").Text.Should().Be("Y");
+        _wordHandler.Get("/body/tbl[1]/tr[1]/tc[3]").Text.Should().Be("Z");
+    }
+
+    [Fact]
+    public void Word_SetRow_CellShorthand_MixedWithRowProps()
+    {
+        // Create table and set initial text
+        _wordHandler.Add("/", "table", null, new() { ["rows"] = "1", ["cols"] = "2" });
+        _wordHandler.Set("/body/tbl[1]/tr[1]/tc[1]", new() { ["text"] = "Hello" });
+        _wordHandler.Set("/body/tbl[1]/tr[1]/tc[2]", new() { ["text"] = "World" });
+
+        // Set both height and cell text in one call
+        _wordHandler.Set("/body/tbl[1]/tr[1]", new() { ["height"] = "1cm", ["c1"] = "Updated" });
+
+        // Verify cell text updated
+        _wordHandler.Get("/body/tbl[1]/tr[1]/tc[1]").Text.Should().Be("Updated");
+        _wordHandler.Get("/body/tbl[1]/tr[1]/tc[2]").Text.Should().Be("World"); // unchanged
+    }
+
+    [Fact]
+    public void Word_SetRow_CellShorthand_OutOfRange_Throws()
+    {
+        _wordHandler.Add("/", "table", null, new() { ["rows"] = "1", ["cols"] = "2" });
+
+        var act = () => _wordHandler.Set("/body/tbl[1]/tr[1]", new() { ["c3"] = "nope" });
+        act.Should().Throw<ArgumentException>().WithMessage("*out of range*");
+    }
+
+    [Fact]
+    public void Pptx_SetRow_CellShorthand_UpdatesText()
+    {
+        // 1. Create table 2x3
+        _pptxHandler.Add("/slide[1]", "table", null, new() { ["rows"] = "2", ["cols"] = "3" });
+        // Add row with cell text via Add
+        _pptxHandler.Set("/slide[1]/table[1]/tr[1]/tc[1]", new() { ["text"] = "A" });
+        _pptxHandler.Set("/slide[1]/table[1]/tr[1]/tc[2]", new() { ["text"] = "B" });
+        _pptxHandler.Set("/slide[1]/table[1]/tr[1]/tc[3]", new() { ["text"] = "C" });
+
+        // 2. Set row cells via c1/c2/c3 shorthand
+        _pptxHandler.Set("/slide[1]/table[1]/tr[1]", new() { ["c1"] = "X", ["c2"] = "Y", ["c3"] = "Z" });
+
+        // 3. Verify updated
+        _pptxHandler.Get("/slide[1]/table[1]/tr[1]/tc[1]").Text.Should().Be("X");
+        _pptxHandler.Get("/slide[1]/table[1]/tr[1]/tc[2]").Text.Should().Be("Y");
+        _pptxHandler.Get("/slide[1]/table[1]/tr[1]/tc[3]").Text.Should().Be("Z");
+
+        // 4. Persistence
+        ReopenPptx();
+        _pptxHandler.Get("/slide[1]/table[1]/tr[1]/tc[1]").Text.Should().Be("X");
+        _pptxHandler.Get("/slide[1]/table[1]/tr[1]/tc[2]").Text.Should().Be("Y");
+        _pptxHandler.Get("/slide[1]/table[1]/tr[1]/tc[3]").Text.Should().Be("Z");
+    }
+
+    [Fact]
+    public void Pptx_SetRow_CellShorthand_OutOfRange_Throws()
+    {
+        _pptxHandler.Add("/slide[1]", "table", null, new() { ["rows"] = "1", ["cols"] = "2" });
+
+        var act = () => _pptxHandler.Set("/slide[1]/table[1]/tr[1]", new() { ["c5"] = "nope" });
+        act.Should().Throw<ArgumentException>().WithMessage("*out of range*");
+    }
+
     // ==================== Helper ====================
 
     private static void CreateTinyPng(string path)
