@@ -1118,7 +1118,27 @@ public partial class PowerPointHandler
         var titleText = chart?.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.Title>()
             ?.Descendants<Drawing.Text>().FirstOrDefault()?.Text ?? "";
 
-        sb.AppendLine($"    <div class=\"shape\" style=\"left:{x}cm;top:{y}cm;width:{w}cm;height:{h}cm;background:rgba(255,255,255,0.05)\">");
+        // Check if dataLabels are enabled
+        var dataLabels = plotArea.Descendants<DocumentFormat.OpenXml.Drawing.Charts.DataLabels>().FirstOrDefault();
+        var showValues = dataLabels?.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.ShowValue>()?.Val?.Value == true
+            || dataLabels?.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.ShowCategoryName>()?.Val?.Value == true
+            || dataLabels?.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.ShowPercent>()?.Val?.Value == true;
+
+        // Plot/chart fill
+        var plotSpPr = plotArea.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.ShapeProperties>();
+        var plotFillColor = plotSpPr?.GetFirstChild<Drawing.SolidFill>()?.GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value;
+        var chartSpPr = chart?.Parent?.Descendants<DocumentFormat.OpenXml.Drawing.Charts.ChartShapeProperties>().FirstOrDefault();
+        var chartFillColor = chartSpPr?.GetFirstChild<Drawing.SolidFill>()?.GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value;
+
+        // Axis titles
+        var valAxis = plotArea.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.ValueAxis>();
+        var valAxisTitle = valAxis?.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.Title>()?.Descendants<Drawing.Text>().FirstOrDefault()?.Text;
+        var catAxis = plotArea.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.CategoryAxis>();
+        var catAxisTitle = catAxis?.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.Title>()?.Descendants<Drawing.Text>().FirstOrDefault()?.Text;
+
+        // Container with optional chart background
+        var bgStyle = chartFillColor != null ? $"background:#{chartFillColor};" : "background:rgba(255,255,255,0.05);";
+        sb.AppendLine($"    <div class=\"shape\" style=\"left:{x}cm;top:{y}cm;width:{w}cm;height:{h}cm;{bgStyle}\">");
 
         // Title
         if (!string.IsNullOrEmpty(titleText))
@@ -1138,6 +1158,10 @@ public partial class PowerPointHandler
         var is3D = chartType.Contains("3d");
 
         sb.AppendLine($"      <svg viewBox=\"0 0 {svgW} {chartSvgH}\" style=\"width:100%;height:calc(100% - {titleH + 4}px)\" preserveAspectRatio=\"xMidYMin meet\">");
+
+        // Plot area background
+        if (plotFillColor != null)
+            sb.AppendLine($"        <rect x=\"{margin.left}\" y=\"{margin.top}\" width=\"{plotW}\" height=\"{plotH}\" fill=\"#{plotFillColor}\" opacity=\"0.3\"/>");
 
         if (is3D && (chartType.Contains("pie") || chartType.Contains("doughnut")))
         {
@@ -1192,8 +1216,15 @@ public partial class PowerPointHandler
         {
             var isHorizontal = chartType.Contains("bar") && !chartType.Contains("column");
             var isStacked = chartType.Contains("stacked") || chartType.Contains("Stacked");
-            RenderBarChartSvg(sb, seriesList, categories, seriesColors, margin.left, margin.top, plotW, plotH, isHorizontal, isStacked);
+            var isPercent = chartType.Contains("percent") || chartType.Contains("Percent");
+            RenderBarChartSvg(sb, seriesList, categories, seriesColors, margin.left, margin.top, plotW, plotH, isHorizontal, isStacked, isPercent);
         }
+
+        // Axis titles inside SVG
+        if (!string.IsNullOrEmpty(valAxisTitle))
+            sb.AppendLine($"        <text x=\"10\" y=\"{chartSvgH / 2}\" fill=\"#888\" font-size=\"8\" text-anchor=\"middle\" dominant-baseline=\"middle\" transform=\"rotate(-90,10,{chartSvgH / 2})\">{HtmlEncode(valAxisTitle)}</text>");
+        if (!string.IsNullOrEmpty(catAxisTitle))
+            sb.AppendLine($"        <text x=\"{svgW / 2}\" y=\"{chartSvgH - 2}\" fill=\"#888\" font-size=\"8\" text-anchor=\"middle\">{HtmlEncode(catAxisTitle)}</text>");
 
         sb.AppendLine("      </svg>");
 
@@ -1212,16 +1243,21 @@ public partial class PowerPointHandler
     }
 
     private static void RenderBarChartSvg(StringBuilder sb, List<(string name, double[] values)> series,
-        string[] categories, List<string> colors, int ox, int oy, int pw, int ph, bool horizontal, bool stacked = false)
+        string[] categories, List<string> colors, int ox, int oy, int pw, int ph,
+        bool horizontal, bool stacked = false, bool percentStacked = false)
     {
         var allValues = series.SelectMany(s => s.values).ToArray();
         if (allValues.Length == 0) return;
         var catCount = Math.Max(categories.Length, series.Max(s => s.values.Length));
         var serCount = series.Count;
+        if (percentStacked) stacked = true;
 
-        // For stacked, maxVal = max sum of all series at each category
         double maxVal;
-        if (stacked)
+        if (percentStacked)
+        {
+            maxVal = 100;
+        }
+        else if (stacked)
         {
             maxVal = 0;
             for (int c = 0; c < catCount; c++)
@@ -1256,19 +1292,26 @@ public partial class PowerPointHandler
             sb.AppendLine($"        <line x1=\"{plotOx}\" y1=\"{oy}\" x2=\"{plotOx}\" y2=\"{oy + ph}\" stroke=\"#555\" stroke-width=\"1\"/>");
             sb.AppendLine($"        <line x1=\"{plotOx}\" y1=\"{oy + ph}\" x2=\"{plotOx + plotPw}\" y2=\"{oy + ph}\" stroke=\"#555\" stroke-width=\"1\"/>");
 
-            // Bars
+            // Bars + value labels
             for (int c = 0; c < catCount; c++)
             {
                 double stackX = 0;
+                var catSum = percentStacked ? series.Sum(s => c < s.values.Length ? s.values[c] : 0) : 1;
                 for (int s = 0; s < serCount; s++)
                 {
-                    var val = c < series[s].values.Length ? series[s].values[c] : 0;
+                    var rawVal = c < series[s].values.Length ? series[s].values[c] : 0;
+                    var val = percentStacked && catSum > 0 ? (rawVal / catSum) * 100 : rawVal;
                     var barW = (val / maxVal) * plotPw;
                     if (stacked)
                     {
                         var bx = plotOx + (stackX / maxVal) * plotPw;
                         var by = oy + c * groupH + gap;
                         sb.AppendLine($"        <rect x=\"{bx:0.#}\" y=\"{by:0.#}\" width=\"{barW:0.#}\" height=\"{barH:0.#}\" fill=\"{colors[s % colors.Count]}\" opacity=\"0.85\"/>");
+                        if (barW > 20)
+                        {
+                            var vlabel = percentStacked ? $"{val:0}%" : (rawVal % 1 == 0 ? $"{(int)rawVal}" : $"{rawVal:0.#}");
+                            sb.AppendLine($"        <text x=\"{bx + barW / 2:0.#}\" y=\"{by + barH / 2:0.#}\" fill=\"white\" font-size=\"7\" text-anchor=\"middle\" dominant-baseline=\"middle\">{vlabel}</text>");
+                        }
                         stackX += val;
                     }
                     else
@@ -1276,6 +1319,8 @@ public partial class PowerPointHandler
                         var bx = plotOx;
                         var by = oy + c * groupH + gap + s * barH;
                         sb.AppendLine($"        <rect x=\"{bx}\" y=\"{by:0.#}\" width=\"{barW:0.#}\" height=\"{barH:0.#}\" fill=\"{colors[s % colors.Count]}\" opacity=\"0.85\"/>");
+                        var vlabel = rawVal % 1 == 0 ? $"{(int)rawVal}" : $"{rawVal:0.#}";
+                        sb.AppendLine($"        <text x=\"{bx + barW + 4:0.#}\" y=\"{by + barH / 2:0.#}\" fill=\"#aaa\" font-size=\"7\" text-anchor=\"start\" dominant-baseline=\"middle\">{vlabel}</text>");
                     }
                 }
             }
@@ -1318,19 +1363,20 @@ public partial class PowerPointHandler
             for (int c = 0; c < catCount; c++)
             {
                 double stackY = 0;
+                var catSum = percentStacked ? series.Sum(s => c < s.values.Length ? s.values[c] : 0) : 1;
                 for (int s = 0; s < serCount; s++)
                 {
-                    var val = c < series[s].values.Length ? series[s].values[c] : 0;
+                    var rawVal = c < series[s].values.Length ? series[s].values[c] : 0;
+                    var val = percentStacked && catSum > 0 ? (rawVal / catSum) * 100 : rawVal;
                     var barH = (val / maxVal) * ph;
                     if (stacked)
                     {
                         var bx = ox + c * groupW + gap;
                         var by = oy + ph - (stackY / maxVal) * ph - barH;
                         sb.AppendLine($"        <rect x=\"{bx:0.#}\" y=\"{by:0.#}\" width=\"{barW:0.#}\" height=\"{barH:0.#}\" fill=\"{colors[s % colors.Count]}\" opacity=\"0.85\"/>");
-                        // Value label inside stacked segment
                         if (barH > 12)
                         {
-                            var vlabel = val % 1 == 0 ? $"{(int)val}" : $"{val:0.#}";
+                            var vlabel = percentStacked ? $"{val:0}%" : (rawVal % 1 == 0 ? $"{(int)rawVal}" : $"{rawVal:0.#}");
                             sb.AppendLine($"        <text x=\"{bx + barW / 2:0.#}\" y=\"{by + barH / 2:0.#}\" fill=\"white\" font-size=\"7\" text-anchor=\"middle\" dominant-baseline=\"middle\">{vlabel}</text>");
                         }
                         stackY += val;
@@ -1340,8 +1386,7 @@ public partial class PowerPointHandler
                         var bx = ox + c * groupW + gap + s * barW;
                         var by = oy + ph - barH;
                         sb.AppendLine($"        <rect x=\"{bx:0.#}\" y=\"{by:0.#}\" width=\"{barW:0.#}\" height=\"{barH:0.#}\" fill=\"{colors[s % colors.Count]}\" opacity=\"0.85\"/>");
-                        // Value label above bar
-                        var vlabel = val % 1 == 0 ? $"{(int)val}" : $"{val:0.#}";
+                        var vlabel = rawVal % 1 == 0 ? $"{(int)rawVal}" : $"{rawVal:0.#}";
                         sb.AppendLine($"        <text x=\"{bx + barW / 2:0.#}\" y=\"{by - 3:0.#}\" fill=\"#aaa\" font-size=\"7\" text-anchor=\"middle\">{vlabel}</text>");
                     }
                 }
@@ -1505,6 +1550,13 @@ public partial class PowerPointHandler
         if (maxVal <= 0) maxVal = 1;
         var catCount = Math.Max(categories.Length, series.Max(s => s.values.Length));
 
+        // Gridlines
+        for (int t = 1; t <= 4; t++)
+        {
+            var gy = oy + ph - (double)ph * t / 4;
+            sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{gy:0.#}\" x2=\"{ox + pw}\" y2=\"{gy:0.#}\" stroke=\"#333\" stroke-width=\"0.5\" stroke-dasharray=\"3,3\"/>");
+        }
+
         // Axis lines
         sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy}\" x2=\"{ox}\" y2=\"{oy + ph}\" stroke=\"#555\" stroke-width=\"1\"/>");
         sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy + ph}\" x2=\"{ox + pw}\" y2=\"{oy + ph}\" stroke=\"#555\" stroke-width=\"1\"/>");
@@ -1512,21 +1564,30 @@ public partial class PowerPointHandler
         // Render in reverse order so first series is on top
         for (int s = series.Count - 1; s >= 0; s--)
         {
-            var points = new List<string>();
+            var points = new List<(double x, double y, double val)>();
             for (int c = 0; c < series[s].values.Length && c < catCount; c++)
             {
                 var px = ox + (catCount > 1 ? (double)pw * c / (catCount - 1) : pw / 2.0);
                 var py = oy + ph - (series[s].values[c] / maxVal) * ph;
-                points.Add($"{px:0.#},{py:0.#}");
+                points.Add((px, py, series[s].values[c]));
             }
             if (points.Count > 0)
             {
-                // Close polygon to baseline
+                var ptStr = string.Join(" ", points.Select(p => $"{p.x:0.#},{p.y:0.#}"));
                 var firstX = ox + (catCount > 1 ? 0 : pw / 2.0);
                 var lastX = ox + (catCount > 1 ? (double)pw * (series[s].values.Length - 1) / (catCount - 1) : pw / 2.0);
-                var polygonPoints = $"{firstX:0.#},{oy + ph} {string.Join(" ", points)} {lastX:0.#},{oy + ph}";
+                var polygonPoints = $"{firstX:0.#},{oy + ph} {ptStr} {lastX:0.#},{oy + ph}";
                 sb.AppendLine($"        <polygon points=\"{polygonPoints}\" fill=\"{colors[s]}\" opacity=\"0.4\"/>");
-                sb.AppendLine($"        <polyline points=\"{string.Join(" ", points)}\" fill=\"none\" stroke=\"{colors[s]}\" stroke-width=\"2\"/>");
+                sb.AppendLine($"        <polyline points=\"{ptStr}\" fill=\"none\" stroke=\"{colors[s]}\" stroke-width=\"2\"/>");
+                // Value labels on top series only (first series = last rendered)
+                if (s == 0)
+                {
+                    foreach (var p in points)
+                    {
+                        var vlabel = p.val % 1 == 0 ? $"{(int)p.val}" : $"{p.val:0.#}";
+                        sb.AppendLine($"        <text x=\"{p.x:0.#}\" y=\"{p.y - 6:0.#}\" fill=\"#aaa\" font-size=\"7\" text-anchor=\"middle\">{vlabel}</text>");
+                    }
+                }
             }
         }
 
@@ -1933,10 +1994,6 @@ public partial class PowerPointHandler
         var catCount = Math.Max(categories.Length, series.Max(s => s.values.Length));
         var serCount = series.Count;
 
-        // Axis lines
-        sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy}\" x2=\"{ox}\" y2=\"{oy + ph}\" stroke=\"#555\" stroke-width=\"1\"/>");
-        sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy + ph}\" x2=\"{ox + pw}\" y2=\"{oy + ph}\" stroke=\"#555\" stroke-width=\"1\"/>");
-
         if (horizontal)
         {
             var hLabelMargin = 50;
@@ -1945,6 +2002,16 @@ public partial class PowerPointHandler
             var groupH = (double)ph / Math.Max(catCount, 1);
             var barH = groupH * 0.6 / serCount;
             var gap = groupH * 0.2;
+
+            // Gridlines
+            for (int t = 1; t <= 4; t++)
+            {
+                var gx = plotOx + (double)plotPw * t / 4;
+                sb.AppendLine($"        <line x1=\"{gx:0.#}\" y1=\"{oy}\" x2=\"{gx:0.#}\" y2=\"{oy + ph}\" stroke=\"#333\" stroke-width=\"0.5\" stroke-dasharray=\"3,3\"/>");
+            }
+            // Axis lines
+            sb.AppendLine($"        <line x1=\"{plotOx}\" y1=\"{oy}\" x2=\"{plotOx}\" y2=\"{oy + ph}\" stroke=\"#555\" stroke-width=\"1\"/>");
+            sb.AppendLine($"        <line x1=\"{plotOx}\" y1=\"{oy + ph}\" x2=\"{plotOx + plotPw}\" y2=\"{oy + ph}\" stroke=\"#555\" stroke-width=\"1\"/>");
 
             for (int s = 0; s < serCount; s++)
             {
@@ -1957,15 +2024,14 @@ public partial class PowerPointHandler
                     var barW = (val / maxVal) * plotPw;
                     var bx = plotOx;
                     var by = oy + c * groupH + gap + s * barH;
-                    // Top face (parallelogram)
                     sb.AppendLine($"        <polygon points=\"{bx:0.#},{by:0.#} {bx + barW:0.#},{by:0.#} {bx + barW + DxIso:0.#},{by + DyIso:0.#} {bx + DxIso:0.#},{by + DyIso:0.#}\" fill=\"{topColor}\" opacity=\"0.9\"/>");
-                    // Front face
                     sb.AppendLine($"        <rect x=\"{bx:0.#}\" y=\"{by:0.#}\" width=\"{barW:0.#}\" height=\"{barH:0.#}\" fill=\"{color}\" opacity=\"0.9\"/>");
-                    // Right face (parallelogram)
                     sb.AppendLine($"        <polygon points=\"{bx + barW:0.#},{by:0.#} {bx + barW + DxIso:0.#},{by + DyIso:0.#} {bx + barW + DxIso:0.#},{by + barH + DyIso:0.#} {bx + barW:0.#},{by + barH:0.#}\" fill=\"{sideColor}\" opacity=\"0.9\"/>");
+                    // Value label
+                    var vlabel = val % 1 == 0 ? $"{(int)val}" : $"{val:0.#}";
+                    sb.AppendLine($"        <text x=\"{bx + barW + DxIso + 4:0.#}\" y=\"{by + barH / 2:0.#}\" fill=\"#aaa\" font-size=\"7\" text-anchor=\"start\" dominant-baseline=\"middle\">{vlabel}</text>");
                 }
             }
-            // Labels
             for (int c = 0; c < catCount; c++)
             {
                 var label = c < categories.Length ? categories[c] : "";
@@ -1986,7 +2052,16 @@ public partial class PowerPointHandler
             var barW = groupW * 0.6 / serCount;
             var gap = groupW * 0.2;
 
-            // Render back to front for correct overlap
+            // Gridlines
+            for (int t = 1; t <= 4; t++)
+            {
+                var gy = oy + ph - (double)ph * t / 4;
+                sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{gy:0.#}\" x2=\"{ox + pw}\" y2=\"{gy:0.#}\" stroke=\"#333\" stroke-width=\"0.5\" stroke-dasharray=\"3,3\"/>");
+            }
+            // Axis lines
+            sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy}\" x2=\"{ox}\" y2=\"{oy + ph}\" stroke=\"#555\" stroke-width=\"1\"/>");
+            sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy + ph}\" x2=\"{ox + pw}\" y2=\"{oy + ph}\" stroke=\"#555\" stroke-width=\"1\"/>");
+
             for (int c = 0; c < catCount; c++)
             {
                 for (int s = 0; s < serCount; s++)
@@ -2000,15 +2075,14 @@ public partial class PowerPointHandler
                     var bx = ox + c * groupW + gap + s * barW;
                     var by = oy + ph - barH;
 
-                    // Front face
                     sb.AppendLine($"        <rect x=\"{bx:0.#}\" y=\"{by:0.#}\" width=\"{barW:0.#}\" height=\"{barH:0.#}\" fill=\"{color}\" opacity=\"0.9\"/>");
-                    // Top face (parallelogram)
                     sb.AppendLine($"        <polygon points=\"{bx:0.#},{by:0.#} {bx + barW:0.#},{by:0.#} {bx + barW + DxIso:0.#},{by + DyIso:0.#} {bx + DxIso:0.#},{by + DyIso:0.#}\" fill=\"{topColor}\" opacity=\"0.9\"/>");
-                    // Right side face (parallelogram)
                     sb.AppendLine($"        <polygon points=\"{bx + barW:0.#},{by:0.#} {bx + barW + DxIso:0.#},{by + DyIso:0.#} {bx + barW + DxIso:0.#},{oy + ph + DyIso:0.#} {bx + barW:0.#},{oy + ph:0.#}\" fill=\"{sideColor}\" opacity=\"0.9\"/>");
+                    // Value label above top face
+                    var vlabel = val % 1 == 0 ? $"{(int)val}" : $"{val:0.#}";
+                    sb.AppendLine($"        <text x=\"{bx + barW / 2 + DxIso / 2:0.#}\" y=\"{by + DyIso - 3:0.#}\" fill=\"#aaa\" font-size=\"7\" text-anchor=\"middle\">{vlabel}</text>");
                 }
             }
-            // Labels
             for (int c = 0; c < catCount; c++)
             {
                 var label = c < categories.Length ? categories[c] : "";
