@@ -170,6 +170,7 @@ static class CommandBuilder
         var limitOpt = new Option<int?>("--limit") { Description = "Limit number of results" };
 
         var colsOpt = new Option<string?>("--cols") { Description = "Column filter, comma-separated (Excel only, e.g. A,B,C)" };
+        var browserOpt = new Option<bool>("--browser") { Description = "Open HTML output in browser (html mode only)" };
 
         var viewCommand = new Command("view", "View document in different modes");
         viewCommand.Add(viewFileArg);
@@ -180,6 +181,7 @@ static class CommandBuilder
         viewCommand.Add(issueTypeOpt);
         viewCommand.Add(limitOpt);
         viewCommand.Add(colsOpt);
+        viewCommand.Add(browserOpt);
         viewCommand.Add(jsonOption);
 
         viewCommand.SetAction(result => { var json = result.GetValue(jsonOption); return SafeRun(() =>
@@ -192,6 +194,7 @@ static class CommandBuilder
             var issueType = result.GetValue(issueTypeOpt);
             var limit = result.GetValue(limitOpt);
             var colsStr = result.GetValue(colsOpt);
+            var browser = result.GetValue(browserOpt);
 
             // Try resident first
             if (TryResident(file.FullName, req =>
@@ -205,6 +208,7 @@ static class CommandBuilder
                 if (issueType != null) req.Args["type"] = issueType;
                 if (limit.HasValue) req.Args["limit"] = limit.Value.ToString();
                 if (colsStr != null) req.Args["cols"] = colsStr;
+                if (browser) req.Args["browser"] = "true";
             }, json)) return;
 
             var format = json ? OutputFormat.Json : OutputFormat.Text;
@@ -218,14 +222,9 @@ static class CommandBuilder
                 {
                     var html = pptHandler.ViewAsHtml(start, end);
 
-                    if (json)
+                    if (browser)
                     {
-                        // --json: output raw HTML to stdout (for third-party integration / piping)
-                        Console.Write(html);
-                    }
-                    else
-                    {
-                        // Interactive: write to temp file and open in browser
+                        // --browser: write to temp file and open in browser
                         var htmlPath = Path.Combine(Path.GetTempPath(), $"officecli_preview_{Path.GetFileNameWithoutExtension(file.Name)}_{DateTime.Now:HHmmss}.html");
                         File.WriteAllText(htmlPath, html);
                         Console.WriteLine(htmlPath);
@@ -235,6 +234,11 @@ static class CommandBuilder
                             System.Diagnostics.Process.Start(psi);
                         }
                         catch { /* silently ignore if browser can't be opened */ }
+                    }
+                    else
+                    {
+                        // Default: output HTML to stdout
+                        Console.Write(html);
                     }
                 }
                 else
@@ -1052,9 +1056,13 @@ static class CommandBuilder
                 if (mode.ToLowerInvariant() is "html" or "h" && handler is OfficeCli.Handlers.PowerPointHandler pptH)
                 {
                     var html = pptH.ViewAsHtml();
-                    var htmlPath = Path.Combine(Path.GetTempPath(), $"officecli_preview_{DateTime.Now:HHmmss}.html");
-                    File.WriteAllText(htmlPath, html);
-                    return htmlPath;
+                    if (item.GetArg("browser") == "true")
+                    {
+                        var htmlPath = Path.Combine(Path.GetTempPath(), $"officecli_preview_{DateTime.Now:HHmmss}.html");
+                        File.WriteAllText(htmlPath, html);
+                        return htmlPath;
+                    }
+                    return html;
                 }
                 return mode.ToLowerInvariant() switch
                 {
