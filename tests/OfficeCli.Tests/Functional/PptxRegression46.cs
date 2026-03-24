@@ -391,7 +391,7 @@ public class PptxRegression46 : IDisposable
 
         var node = handler.Get("/body/p[1]");
         // Does NodeBuilder report pageBreakBefore?
-        node.Format.Should().ContainKey("pagebreakbefore",
+        node.Format.Should().ContainKey("pageBreakBefore",
             because: "pageBreakBefore should be readable after Add");
     }
 

@@ -671,14 +671,15 @@ public class WordRegression53 : IDisposable
         });
 
         var node = handler.Get("/body/p[1]");
-        node.Format.Should().ContainKey("widowcontrol");
-        node.Format["widowcontrol"].Should().Be(true);
+        node.Format.Should().ContainKey("widowControl");
+        node.Format["widowControl"].Should().Be(true);
 
         handler.Set(node.Path, new() { ["widowcontrol"] = "false" });
 
         node = handler.Get("/body/p[1]");
-        node.Format.Should().NotContainKey("widowcontrol",
-            "after Set widowcontrol=false, the property should be removed");
+        node.Format.Should().ContainKey("widowControl",
+            "after Set widowcontrol=false, widowControl should be explicitly false");
+        node.Format["widowControl"].Should().Be(false);
     }
 
     // ────────────────────────────────────────────────────────────────────────
@@ -698,13 +699,13 @@ public class WordRegression53 : IDisposable
         });
 
         var node = handler.Get("/body/p[1]");
-        node.Format.Should().ContainKey("pagebreakbefore");
-        node.Format["pagebreakbefore"].Should().Be(true);
+        node.Format.Should().ContainKey("pageBreakBefore");
+        node.Format["pageBreakBefore"].Should().Be(true);
 
         handler.Set(node.Path, new() { ["pagebreakbefore"] = "false" });
 
         node = handler.Get("/body/p[1]");
-        node.Format.Should().NotContainKey("pagebreakbefore",
+        node.Format.Should().NotContainKey("pageBreakBefore",
             "after Set pagebreakbefore=false, the property should be removed");
     }
 

@@ -839,7 +839,7 @@ public class PptxRegression32 : IDisposable
         // 2. Get + Verify initial state
         var node = _wordHandler.Get("/body/p[2]");
         node.Text.Should().Be("New page");
-        node.Format.Should().ContainKey("pagebreakbefore");
+        node.Format.Should().ContainKey("pageBreakBefore");
 
         // 3. Set (modify — remove page break before)
         _wordHandler.Set("/body/p[2]", new() { ["pagebreakbefore"] = "false" });

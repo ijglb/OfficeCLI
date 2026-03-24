@@ -415,7 +415,7 @@ public class WordRegression51 : IDisposable
         });
 
         var node = handler.Get("/body/p[1]");
-        node.Format.Should().ContainKey("pagebreakbefore");
+        node.Format.Should().ContainKey("pageBreakBefore");
     }
 
     // ==================== Bug5119 ====================
@@ -574,7 +574,7 @@ public class WordRegression51 : IDisposable
         });
 
         var node = handler.Get("/body/p[1]");
-        node.Format.Should().ContainKey("widowcontrol");
+        node.Format.Should().ContainKey("widowControl");
     }
 
     // ==================== Bug5126 ====================

@@ -441,6 +441,6 @@ public class WordInvoiceTableTest : IDisposable
         });
 
         var cell = handler.Get($"{tablePath}/tr[1]/tc[1]");
-        cell.Format.Should().ContainKey("gridspan");
+        cell.Format.Should().ContainKey("gridSpan");
     }
 }

@@ -300,7 +300,7 @@ public class WordRegression28 : IDisposable
         var node = _wordHandler.Get("/body/tbl[1]/tr[1]/tc[1]");
         node.Format["fill"]?.ToString().Should().Be("#FF9900");
         node.Format["valign"]?.ToString().Should().Be("center");
-        int.Parse(node.Format["gridspan"]!.ToString()!).Should().Be(2);
+        int.Parse(node.Format["gridSpan"]!.ToString()!).Should().Be(2);
         node.Format.Should().ContainKey("nowrap");
         node.Format["border.bottom"]?.ToString().Should().Contain("single");
     }
@@ -378,8 +378,8 @@ public class WordRegression28 : IDisposable
         node.Format["hangingIndent"]?.ToString().Should().Be("480");
         node.Format.Should().ContainKey("keepNext");
         node.Format.Should().ContainKey("keepLines");
-        node.Format.Should().ContainKey("pagebreakbefore");
-        node.Format.Should().ContainKey("widowcontrol");
+        node.Format.Should().ContainKey("pageBreakBefore");
+        node.Format.Should().ContainKey("widowControl");
 
         var run = _wordHandler.Get("/body/p[1]", depth: 2).Children[0];
         run.Format["highlight"]?.ToString().Should().Be("yellow");

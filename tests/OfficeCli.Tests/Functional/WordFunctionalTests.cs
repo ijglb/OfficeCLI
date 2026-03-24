@@ -1018,8 +1018,8 @@ public class WordFunctionalTests : IDisposable
         node = _handler.Get("/body/p[1]");
         ((bool)node.Format["keepNext"]).Should().BeTrue();
         ((bool)node.Format["keepLines"]).Should().BeTrue();
-        ((bool)node.Format["pagebreakbefore"]).Should().BeTrue();
-        ((bool)node.Format["widowcontrol"]).Should().BeTrue();
+        ((bool)node.Format["pageBreakBefore"]).Should().BeTrue();
+        ((bool)node.Format["widowControl"]).Should().BeTrue();
 
         // 5. Set (remove)
         _handler.Set("/body/p[1]", new() { ["keepnext"] = "false" });
@@ -1032,7 +1032,7 @@ public class WordFunctionalTests : IDisposable
         Reopen();
         node = _handler.Get("/body/p[1]");
         ((bool)node.Format["keepLines"]).Should().BeTrue();
-        ((bool)node.Format["pagebreakbefore"]).Should().BeTrue();
+        ((bool)node.Format["pageBreakBefore"]).Should().BeTrue();
     }
 
     // ==================== Section Break Lifecycle ====================
@@ -1377,20 +1377,26 @@ public class WordFunctionalTests : IDisposable
         // Get + Verify after Add
         var node = _handler.Get("/body/p[1]/r[1]");
         node.Format.Should().ContainKey("w14shadow");
-        ((string)node.Format["w14shadow"]).Should().Be("#000000");
+        var shadow = (string)node.Format["w14shadow"];
+        shadow.Should().Contain("#000000");
+        shadow.Should().Contain(";");  // should include parameters beyond just color
 
         // Set (modify to different shadow)
         _handler.Set("/body/p[1]/r[1]", new() { ["w14shadow"] = "FF0000;6;45;5;60" });
 
         // Get + Verify after Set
         node = _handler.Get("/body/p[1]/r[1]");
-        ((string)node.Format["w14shadow"]).Should().Be("#FF0000");
+        shadow = (string)node.Format["w14shadow"];
+        shadow.Should().Contain("#FF0000");
+        shadow.Should().Contain("6");   // blur
+        shadow.Should().Contain("45");  // angle
+        shadow.Should().Contain("60");  // opacity
 
         // Persistence
         Reopen();
         node = _handler.Get("/body/p[1]/r[1]");
         node.Format.Should().ContainKey("w14shadow");
-        ((string)node.Format["w14shadow"]).Should().Be("#FF0000");
+        ((string)node.Format["w14shadow"]).Should().Contain("#FF0000");
     }
 
     [Fact]
