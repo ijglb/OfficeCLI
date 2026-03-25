@@ -1059,13 +1059,13 @@ public class WordFunctionalTests : IDisposable
         // 4. Get + Verify
         sec = _handler.Get("/section[1]");
         ((string)sec.Format["type"]).Should().Be("continuous");
-        ((int)sec.Format["margintop"]).Should().Be(720);
+        ((int)sec.Format["marginTop"]).Should().Be(720);
 
         // 5. Persistence
         Reopen();
         sec = _handler.Get("/section[1]");
         ((string)sec.Format["type"]).Should().Be("continuous");
-        ((int)sec.Format["margintop"]).Should().Be(720);
+        ((int)sec.Format["marginTop"]).Should().Be(720);
     }
 
     // ==================== Footnote Lifecycle ====================

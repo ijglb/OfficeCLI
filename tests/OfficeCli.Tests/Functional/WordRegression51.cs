@@ -396,7 +396,7 @@ public class WordRegression51 : IDisposable
         });
 
         var node = handler.Get("/section[1]");
-        node.Format.Should().ContainKey("margintop");
+        node.Format.Should().ContainKey("marginTop");
     }
 
     // ==================== Bug5118 ====================

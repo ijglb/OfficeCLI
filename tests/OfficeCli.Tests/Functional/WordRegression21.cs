@@ -198,7 +198,7 @@ public class WordRegression21 : IDisposable
         });
 
         var section = _wordHandler.Get("/section[1]");
-        section.Format.Should().ContainKey("margintop",
+        section.Format.Should().ContainKey("marginTop",
             "section Get should include margins when they've been set");
     }
 
