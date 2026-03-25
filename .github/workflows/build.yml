@@ -82,6 +82,7 @@ jobs:
                 /p:StripSymbols=true \
                 /p:InvariantGlobalization=true \
                 -o publish --nologo
+              chmod -R a+rw publish/
             '
 
       - name: Rename output
