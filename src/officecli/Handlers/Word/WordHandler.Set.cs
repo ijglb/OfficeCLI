@@ -1240,7 +1240,7 @@ public partial class WordHandler
                     case var k when k.StartsWith("border"):
                         ApplyCellBorders(tcPr, key, value);
                         break;
-                    case "gridspan":
+                    case "gridspan" or "colspan":
                         var newSpan = ParseHelpers.SafeParseInt(value, "gridspan");
                         tcPr.GridSpan = new GridSpan { Val = newSpan };
                         // Ensure the row has the correct number of tc elements.
@@ -1599,7 +1599,7 @@ public partial class WordHandler
                 indent.FirstLine = value; // raw twips, consistent with Get and other indent properties
                 indent.Hanging = null;
                 return true;
-            case "leftindent" or "indentleft":
+            case "leftindent" or "indentleft" or "indent":
                 var indentL = pProps.Indentation ?? (pProps.Indentation = new Indentation());
                 indentL.Left = ParseHelpers.SafeParseUint(value, "leftindent").ToString();
                 return true;
