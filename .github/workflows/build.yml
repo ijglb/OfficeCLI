@@ -17,9 +17,11 @@ jobs:
           - rid: osx-x64
             name: officecli-mac-x64
             os: macos-latest
-          - rid: linux-x64
+          - rid: linux-musl-x64
             name: officecli-linux-x64
             os: ubuntu-latest
+            aot: true
+          # 注意: linux-arm64 仍使用 CoreCLR，若目标服务器 glibc 也过老，需类似处理
           - rid: linux-arm64
             name: officecli-linux-arm64
             os: ubuntu-latest
@@ -48,13 +50,35 @@ jobs:
           fi
 
       - name: Setup .NET
+        if: '!matrix.aot'
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
           dotnet-quality: 'preview'
 
       - name: Publish
+        if: '!matrix.aot'
         run: dotnet publish src/officecli/officecli.csproj -c Release -r ${{ matrix.rid }} -o publish --nologo
+
+      # NativeAOT + musl 静态链接：产出零 glibc 依赖的二进制文件，可运行于任意 Linux x86_64
+      - name: Publish (Linux AOT static)
+        if: matrix.aot
+        run: |
+          docker run --rm -v "${{ github.workspace }}:/src" -w /src \
+            -e TARGET_RID=${{ matrix.rid }} \
+            alpine:3.20 sh -c '
+              set -e
+              apk add --no-cache bash curl clang build-base zlib-dev zlib-static
+              export DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
+              curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel 10.0 --quality preview --install-dir /usr/share/dotnet
+              export PATH="/usr/share/dotnet:$PATH"
+              dotnet publish src/officecli/officecli.csproj -c Release -r "$TARGET_RID" \
+                /p:PublishAot=true \
+                /p:PublishSingleFile=false \
+                /p:StripSymbols=true \
+                /p:InvariantGlobalization=true \
+                -o publish --nologo
+            '
 
       - name: Rename output
         run: |
