@@ -390,16 +390,16 @@ public class MixedRegression1 : IDisposable
         _wordHandler.Set("/section[1]", new() { ["margintop"] = "1440" });
 
         var sec = _wordHandler.Get("/section[1]");
-        sec.Format.Should().ContainKey("margintop",
+        sec.Format.Should().ContainKey("marginTop",
             "Top margin should be set");
 
         // Now set left margin — it should reuse the same PageMargin element
         _wordHandler.Set("/section[1]", new() { ["marginleft"] = "1440" });
 
         sec = _wordHandler.Get("/section[1]");
-        sec.Format.Should().ContainKey("margintop",
+        sec.Format.Should().ContainKey("marginTop",
             "Top margin should still be present after setting left margin");
-        sec.Format.Should().ContainKey("marginleft",
+        sec.Format.Should().ContainKey("marginLeft",
             "Left margin should now be set");
     }
 

@@ -58,11 +58,11 @@ public partial class WordHandler
         // Allow per-section overrides
         if (properties.TryGetValue("pagewidth", out var sw) || properties.TryGetValue("pageWidth", out sw) || properties.TryGetValue("width", out sw))
         {
-            (sectPr.GetFirstChild<PageSize>() ?? sectPr.AppendChild(new PageSize())).Width = ParseHelpers.SafeParseUint(sw, "pagewidth");
+            (sectPr.GetFirstChild<PageSize>() ?? sectPr.AppendChild(new PageSize())).Width = ParseTwips(sw);
         }
         if (properties.TryGetValue("pageheight", out var sh) || properties.TryGetValue("pageHeight", out sh) || properties.TryGetValue("height", out sh))
         {
-            (sectPr.GetFirstChild<PageSize>() ?? sectPr.AppendChild(new PageSize())).Height = ParseHelpers.SafeParseUint(sh, "pageheight");
+            (sectPr.GetFirstChild<PageSize>() ?? sectPr.AppendChild(new PageSize())).Height = ParseTwips(sh);
         }
         if (properties.TryGetValue("orientation", out var orient))
         {
@@ -256,7 +256,7 @@ public partial class WordHandler
         };
         newStyle.AppendChild(new StyleName { Val = styleName });
 
-        if (properties.TryGetValue("basedon", out var basedOn) && !string.IsNullOrEmpty(basedOn))
+        if ((properties.TryGetValue("basedon", out var basedOn) || properties.TryGetValue("basedOn", out basedOn)) && !string.IsNullOrEmpty(basedOn))
             newStyle.AppendChild(new BasedOn { Val = basedOn });
         if (properties.TryGetValue("next", out var nextStyle))
             newStyle.AppendChild(new NextParagraphStyle { Val = nextStyle });
@@ -379,12 +379,8 @@ public partial class WordHandler
 
         if (headerType == HeaderFooterValues.First)
         {
-            var settingsPart = mainPartH.DocumentSettingsPart
-                ?? mainPartH.AddNewPart<DocumentSettingsPart>();
-            settingsPart.Settings ??= new Settings();
-            if (settingsPart.Settings.GetFirstChild<TitlePage>() == null)
-                settingsPart.Settings.AppendChild(new TitlePage());
-            settingsPart.Settings.Save();
+            if (hSectPr.GetFirstChild<TitlePage>() == null)
+                hSectPr.AppendChild(new TitlePage());
         }
 
         var hIdx = mainPartH.HeaderParts.ToList().IndexOf(headerPart);
@@ -446,16 +442,17 @@ public partial class WordHandler
             Id = mainPartF.GetIdOfPart(footerPart),
             Type = footerType
         };
-        fSectPr.PrependChild(footerRef);
+        // Insert footerReference after the last headerReference to maintain schema order
+        var lastHeaderRef = fSectPr.Elements<HeaderReference>().LastOrDefault();
+        if (lastHeaderRef != null)
+            fSectPr.InsertAfter(footerRef, lastHeaderRef);
+        else
+            fSectPr.PrependChild(footerRef);
 
         if (footerType == HeaderFooterValues.First)
         {
-            var settingsPart = mainPartF.DocumentSettingsPart
-                ?? mainPartF.AddNewPart<DocumentSettingsPart>();
-            settingsPart.Settings ??= new Settings();
-            if (settingsPart.Settings.GetFirstChild<TitlePage>() == null)
-                settingsPart.Settings.AppendChild(new TitlePage());
-            settingsPart.Settings.Save();
+            if (fSectPr.GetFirstChild<TitlePage>() == null)
+                fSectPr.AppendChild(new TitlePage());
         }
 
         var fIdx = mainPartF.FooterParts.ToList().IndexOf(footerPart);

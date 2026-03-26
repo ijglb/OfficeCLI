@@ -195,13 +195,13 @@ public partial class PowerPointHandler
         // so text doesn't appear outside the visible shape area.
         if (!string.IsNullOrEmpty(clipPathCss) && presetGeom?.Preset?.HasValue == true)
         {
-            var insetPct = GetShapeTextInsetPercent(presetGeom.Preset!.InnerText!);
-            if (insetPct > 0)
+            var (pctL, pctT, pctR, pctB) = GetShapeTextInsetPercent(presetGeom.Preset!.InnerText!);
+            if (pctL > 0 || pctT > 0 || pctR > 0 || pctB > 0)
             {
-                var extraL = (long)(cx * insetPct);
-                var extraT = (long)(cy * insetPct);
-                var extraR = (long)(cx * insetPct);
-                var extraB = (long)(cy * insetPct);
+                var extraL = (long)(cx * pctL);
+                var extraT = (long)(cy * pctT);
+                var extraR = (long)(cx * pctR);
+                var extraB = (long)(cy * pctB);
                 lIns = Math.Max(lIns, extraL);
                 tIns = Math.Max(tIns, extraT);
                 rIns = Math.Max(rIns, extraR);
@@ -418,36 +418,39 @@ public partial class PowerPointHandler
     // ==================== Shape Text Inset for Clip-Path Shapes ====================
 
     /// <summary>
-    /// Returns the approximate inset percentage (0-1) for text inside a clip-path shape.
-    /// This keeps text within the visible shape interior (e.g. inside the diamond, not in the corners).
+    /// Returns per-side inset percentages (left, top, right, bottom) for text inside a clip-path shape.
+    /// Each value is 0-1, applied to the shape's width (left/right) or height (top/bottom).
+    /// This keeps text within the visible shape interior.
     /// </summary>
-    private static double GetShapeTextInsetPercent(string preset) => preset switch
+    private static (double L, double T, double R, double B) GetShapeTextInsetPercent(string preset) => preset switch
     {
-        "diamond" => 0.22,
-        "triangle" or "isosTriangle" => 0.20,
-        "rtTriangle" => 0.15,
-        "star4" => 0.28,
-        "star5" => 0.28,
-        "star6" => 0.25,
-        "star8" or "star10" or "star12" => 0.20,
-        "hexagon" => 0.10,
-        "pentagon" => 0.12,
-        "heptagon" or "octagon" or "decagon" or "dodecagon" => 0.08,
-        "parallelogram" => 0.12,
-        "trapezoid" => 0.12,
-        "rightArrow" or "leftArrow" or "notchedRightArrow" => 0.10,
-        "upArrow" or "downArrow" => 0.10,
-        "chevron" or "homePlate" => 0.10,
-        "heart" => 0.15,
-        "plus" or "cross" => 0.10,
-        "cloud" or "cloudCallout" => 0.12,
-        "sun" => 0.20,
-        "moon" => 0.15,
-        "cube" => 0.08,
-        "donut" => 0.25,
-        "wedgeRectCallout" or "wedgeRoundRectCallout" or "wedgeEllipseCallout" => 0.08,
-        "curvedRightArrow" or "curvedLeftArrow" or "curvedUpArrow" or "curvedDownArrow" => 0.12,
-        _ => 0
+        "diamond" => (0.25, 0.25, 0.25, 0.25),
+        "triangle" or "isosTriangle" => (0.20, 0.20, 0.20, 0),
+        "rtTriangle" => (0, 0.15, 0.15, 0),
+        "star4" => (0.28, 0.28, 0.28, 0.28),
+        "star5" => (0.28, 0.28, 0.28, 0.28),
+        "star6" => (0.25, 0.25, 0.25, 0.25),
+        "star8" or "star10" or "star12" => (0.20, 0.20, 0.20, 0.20),
+        "hexagon" => (0.25, 0, 0.25, 0),
+        "pentagon" => (0.12, 0.12, 0.12, 0),
+        "heptagon" or "octagon" or "decagon" or "dodecagon" => (0.08, 0.08, 0.08, 0.08),
+        "parallelogram" => (0.15, 0, 0.15, 0),
+        "trapezoid" => (0.12, 0, 0.12, 0),
+        "rightArrow" or "notchedRightArrow" => (0, 0, 0.25, 0),
+        "leftArrow" => (0.25, 0, 0, 0),
+        "upArrow" => (0, 0.25, 0, 0),
+        "downArrow" => (0, 0, 0, 0.25),
+        "chevron" or "homePlate" => (0, 0, 0.15, 0),
+        "heart" => (0.15, 0.15, 0.15, 0.15),
+        "plus" or "cross" => (0.10, 0.10, 0.10, 0.10),
+        "cloud" or "cloudCallout" => (0.12, 0.12, 0.12, 0.12),
+        "sun" => (0.20, 0.20, 0.20, 0.20),
+        "moon" => (0.15, 0, 0, 0),
+        "cube" => (0, 0.08, 0.08, 0),
+        "donut" => (0.25, 0.25, 0.25, 0.25),
+        "wedgeRectCallout" or "wedgeRoundRectCallout" or "wedgeEllipseCallout" => (0.08, 0.08, 0.08, 0.08),
+        "curvedRightArrow" or "curvedLeftArrow" or "curvedUpArrow" or "curvedDownArrow" => (0.12, 0.12, 0.12, 0.12),
+        _ => (0, 0, 0, 0)
     };
 
     // ==================== Placeholder Font Size Inheritance ====================
@@ -900,6 +903,257 @@ public partial class PowerPointHandler
             }
         }
 
+        sb.AppendLine("    </div>");
+    }
+
+    // ==================== AlternateContent (3D Model, Zoom) Rendering ====================
+
+    /// <summary>
+    /// Render mc:AlternateContent elements. For 3D models, embeds the GLB as base64
+    /// and uses Three.js to render it interactively in the browser.
+    /// </summary>
+    private static void RenderAlternateContent(StringBuilder sb, OpenXmlElement acElement,
+        SlidePart slidePart, Dictionary<string, string> themeColors)
+    {
+        var isModel3D = acElement.Descendants().Any(d => d.LocalName == "model3d");
+        var isZoom = acElement.Descendants().Any(d => d.LocalName == "sldZm");
+        if (!isModel3D && !isZoom) return;
+
+        // Extract position from mc:Choice > graphicFrame/sp > xfrm
+        var choice = acElement.ChildElements.FirstOrDefault(e => e.LocalName == "Choice");
+        var frame = choice?.ChildElements.FirstOrDefault(e =>
+            e.LocalName == "graphicFrame" || e.LocalName == "sp");
+        var xfrm = frame?.ChildElements.FirstOrDefault(e => e.LocalName == "xfrm");
+        xfrm ??= frame?.Descendants().FirstOrDefault(e =>
+            e.LocalName == "xfrm" && e.Parent?.LocalName == (frame?.LocalName == "sp" ? "spPr" : frame?.LocalName));
+        if (xfrm == null) return;
+
+        var off = xfrm.ChildElements.FirstOrDefault(e => e.LocalName == "off");
+        var ext = xfrm.ChildElements.FirstOrDefault(e => e.LocalName == "ext");
+        if (off == null || ext == null) return;
+
+        long.TryParse(off.GetAttribute("x", "").Value, out var x);
+        long.TryParse(off.GetAttribute("y", "").Value, out var y);
+        long.TryParse(ext.GetAttribute("cx", "").Value, out var cx);
+        long.TryParse(ext.GetAttribute("cy", "").Value, out var cy);
+        if (cx == 0 || cy == 0) return;
+
+        var leftCm = x / 360000.0;
+        var topCm = y / 360000.0;
+        var widthCm = cx / 360000.0;
+        var heightCm = cy / 360000.0;
+
+        if (isModel3D)
+        {
+            RenderModel3D(sb, acElement, slidePart, leftCm, topCm, widthCm, heightCm);
+        }
+        else
+        {
+            // Zoom: render fallback image
+            RenderZoomFallback(sb, acElement, slidePart, leftCm, topCm, widthCm, heightCm);
+        }
+    }
+
+    private static int _model3dCounter;
+    // Cache: part URI → JS variable name, to avoid embedding the same GLB multiple times
+    private static readonly Dictionary<string, string> _glbDataCache = new();
+
+    /// <summary>
+    /// Render a 3D model using Three.js with the embedded GLB data.
+    /// Same GLB files across slides are deduplicated — embedded once, referenced by variable.
+    /// </summary>
+    private static void RenderModel3D(StringBuilder sb, OpenXmlElement acElement,
+        SlidePart slidePart, double leftCm, double topCm, double widthCm, double heightCm)
+    {
+        // Find the model3d element and get the GLB relationship
+        var model3d = acElement.Descendants().FirstOrDefault(d => d.LocalName == "model3d");
+        if (model3d == null) return;
+
+        var rNs = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+        var embedId = model3d.GetAttribute("embed", rNs).Value;
+        if (string.IsNullOrEmpty(embedId)) return;
+
+        // Deduplicate: use content hash so identical GLBs across slides share one copy
+        string glbVarName;
+        try
+        {
+            var part = slidePart.GetPartById(embedId);
+            using var stream = part.GetStream();
+            using var ms = new MemoryStream();
+            stream.CopyTo(ms);
+            var bytes = ms.ToArray();
+            var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes))[..16];
+            if (!_glbDataCache.TryGetValue(hash, out glbVarName!))
+            {
+                glbVarName = $"_glb{_glbDataCache.Count}";
+                sb.AppendLine($"<script>window.{glbVarName}='{Convert.ToBase64String(bytes)}';</script>");
+                _glbDataCache[hash] = glbVarName;
+            }
+        }
+        catch { return; }
+
+        var canvasId = $"model3d_{_model3dCounter++}";
+
+        // Extract rotation from am3d:rot
+        var rot = model3d.Descendants().FirstOrDefault(d => d.LocalName == "rot");
+        double rotX = 0, rotY = 0, rotZ = 0;
+        if (rot != null)
+        {
+            var ax = rot.GetAttribute("ax", "").Value;
+            var ay = rot.GetAttribute("ay", "").Value;
+            var az = rot.GetAttribute("az", "").Value;
+            if (!string.IsNullOrEmpty(ax) && int.TryParse(ax, out var axv)) rotX = axv / 60000.0 * Math.PI / 180.0;
+            if (!string.IsNullOrEmpty(ay) && int.TryParse(ay, out var ayv)) rotY = ayv / 60000.0 * Math.PI / 180.0;
+            if (!string.IsNullOrEmpty(az) && int.TryParse(az, out var azv)) rotZ = azv / 60000.0 * Math.PI / 180.0;
+        }
+
+        // Extract fallback image from mc:Fallback for WebGL-unavailable environments
+        string? fallbackImgSrc = null;
+        var fallback = acElement.ChildElements.FirstOrDefault(e => e.LocalName == "Fallback");
+        var fbBlip = fallback?.Descendants().FirstOrDefault(d => d.LocalName == "blip");
+        if (fbBlip != null)
+        {
+            var fbRNs = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+            var fbEmbedId = fbBlip.GetAttribute("embed", fbRNs).Value;
+            if (!string.IsNullOrEmpty(fbEmbedId))
+            {
+                try
+                {
+                    var fbPart = slidePart.GetPartById(fbEmbedId);
+                    using var fbStream = fbPart.GetStream();
+                    using var fbMs = new MemoryStream();
+                    fbStream.CopyTo(fbMs);
+                    var fbBytes = fbMs.ToArray();
+                    if (fbBytes.Length > 200)
+                        fallbackImgSrc = $"data:{fbPart.ContentType ?? "image/png"};base64,{Convert.ToBase64String(fbBytes)}";
+                }
+                catch { }
+            }
+        }
+
+        var containerId = $"m3d_wrap_{canvasId}";
+        sb.AppendLine($"    <div id=\"{containerId}\" style=\"position:absolute;" +
+            $"left:{leftCm:F3}cm;top:{topCm:F3}cm;" +
+            $"width:{widthCm:F3}cm;height:{heightCm:F3}cm;" +
+            $"overflow:hidden;\">");
+        sb.AppendLine($"      <canvas id=\"{canvasId}\" style=\"width:100%;height:100%;\"></canvas>");
+        if (fallbackImgSrc != null)
+            sb.AppendLine($"      <img class=\"m3d-fallback\" src=\"{fallbackImgSrc}\" style=\"width:100%;height:100%;object-fit:contain;display:none;\" />");
+        sb.AppendLine("    </div>");
+
+        sb.AppendLine($@"    <script type=""module"">
+    import * as THREE from 'three';
+    import {{ GLTFLoader }} from 'three/addons/loaders/GLTFLoader.js';
+    (function() {{
+      const canvas = document.getElementById('{canvasId}');
+      if (!canvas) return;
+      const container = canvas.parentElement;
+      try {{
+        const designW = {widthCm:F3} * 96 / 2.54;
+        const designH = {heightCm:F3} * 96 / 2.54;
+        canvas.width = designW * 2; canvas.height = designH * 2;
+        canvas.style.width = '100%'; canvas.style.height = '100%';
+
+        const w = designW, h = designH;
+        const dpr = window.devicePixelRatio || 1;
+        const renderer = new THREE.WebGLRenderer({{ canvas, alpha: true, antialias: true }});
+        renderer.setSize(canvas.width / dpr, canvas.height / dpr);
+        renderer.setPixelRatio(dpr);
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(45, w / h, 0.01, 1000);
+
+        // Lighting (matches PowerPoint 3-point setup)
+        scene.add(new THREE.AmbientLight(0x808080, 0.8));
+        const key = new THREE.DirectionalLight(0xfff0e0, 1.2);
+        key.position.set(2, 3, 4);
+        scene.add(key);
+        const fill = new THREE.DirectionalLight(0x6090e0, 0.6);
+        fill.position.set(-3, 2, -1);
+        scene.add(fill);
+        const rim = new THREE.DirectionalLight(0xd0b0ff, 0.4);
+        rim.position.set(-1, 1, -3);
+        scene.add(rim);
+
+        // Load GLB from base64
+        const b64 = window.{glbVarName};
+        const bin = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+        const loader = new GLTFLoader();
+        loader.parse(bin.buffer, '', (gltf) => {{
+          const model = gltf.scene;
+          // Center and fit model
+          const box = new THREE.Box3().setFromObject(model);
+          const center = box.getCenter(new THREE.Vector3());
+          const size = box.getSize(new THREE.Vector3());
+          model.position.sub(center);
+          const maxDim = Math.max(size.x, size.y, size.z);
+          const scale = 2.0 / maxDim;
+          model.scale.setScalar(scale);
+          // Apply rotation from PowerPoint
+          model.rotation.x = {rotX:F6};
+          model.rotation.y = {rotY:F6};
+          model.rotation.z = {rotZ:F6};
+          scene.add(model);
+          // Position camera
+          camera.position.set(0, 0, 3.2);
+          camera.lookAt(0, 0, 0);
+          // Auto-rotate animation
+          let baseRotY = {rotY:F6};
+          function animate() {{
+            requestAnimationFrame(animate);
+            baseRotY += 0.003;
+            model.rotation.y = baseRotY;
+            renderer.render(scene, camera);
+          }}
+          animate();
+        }});
+      }} catch(e) {{
+        // WebGL unavailable — show fallback image
+        canvas.style.display = 'none';
+        const fb = container?.querySelector('.m3d-fallback');
+        if (fb) fb.style.display = 'block';
+      }}
+    }})();
+    </script>");
+    }
+
+    /// <summary>
+    /// Render a zoom element using its fallback image.
+    /// </summary>
+    private static void RenderZoomFallback(StringBuilder sb, OpenXmlElement acElement,
+        SlidePart slidePart, double leftCm, double topCm, double widthCm, double heightCm)
+    {
+        var fallback = acElement.ChildElements.FirstOrDefault(e => e.LocalName == "Fallback");
+        var fbBlip = fallback?.Descendants().FirstOrDefault(d => d.LocalName == "blip");
+        string? imgSrc = null;
+        if (fbBlip != null)
+        {
+            var rNs = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+            var embedId = fbBlip.GetAttribute("embed", rNs).Value;
+            if (!string.IsNullOrEmpty(embedId))
+            {
+                try
+                {
+                    var part = slidePart.GetPartById(embedId);
+                    using var stream = part.GetStream();
+                    using var ms = new MemoryStream();
+                    stream.CopyTo(ms);
+                    var bytes = ms.ToArray();
+                    if (bytes.Length > 200)
+                        imgSrc = $"data:{part.ContentType ?? "image/png"};base64,{Convert.ToBase64String(bytes)}";
+                }
+                catch { }
+            }
+        }
+
+        sb.AppendLine($"    <div style=\"position:absolute;" +
+            $"left:{leftCm:F3}cm;top:{topCm:F3}cm;" +
+            $"width:{widthCm:F3}cm;height:{heightCm:F3}cm;" +
+            $"border:2px dashed rgba(255,193,7,0.6);border-radius:8px;" +
+            $"overflow:hidden;\">");
+        if (imgSrc != null)
+            sb.AppendLine($"      <img src=\"{imgSrc}\" style=\"width:100%;height:100%;object-fit:contain;\" />");
         sb.AppendLine("    </div>");
     }
 }

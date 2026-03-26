@@ -78,7 +78,7 @@ public partial class WordHandler
             }
             pProps.Shading = shd;
         }
-        if (properties.TryGetValue("leftindent", out var addLI) || properties.TryGetValue("leftIndent", out addLI) || properties.TryGetValue("indentleft", out addLI))
+        if (properties.TryGetValue("leftindent", out var addLI) || properties.TryGetValue("leftIndent", out addLI) || properties.TryGetValue("indentleft", out addLI) || properties.TryGetValue("indent", out addLI))
         {
             var ind = pProps.Indentation ?? (pProps.Indentation = new Indentation());
             ind.Left = ParseHelpers.SafeParseUint(addLI, "leftindent").ToString();
@@ -119,7 +119,10 @@ public partial class WordHandler
             int? startVal = null;
             if (properties.TryGetValue("start", out var sv))
                 startVal = ParseHelpers.SafeParseInt(sv, "start");
-            ApplyListStyle(para, listStyle, startVal);
+            int? levelVal = null;
+            if (properties.TryGetValue("listLevel", out var ll) || properties.TryGetValue("listlevel", out ll) || properties.TryGetValue("level", out ll))
+                levelVal = ParseHelpers.SafeParseInt(ll, "listLevel");
+            ApplyListStyle(para, listStyle, startVal, levelVal);
             // pProps already appended, skip the append below
             goto paragraphPropsApplied;
         }
@@ -150,7 +153,7 @@ public partial class WordHandler
                 var ulVal = pUnderline.ToLowerInvariant() switch { "true" => "single", "false" or "none" => "none", _ => pUnderline };
                 rProps.Underline = new Underline { Val = new UnderlineValues(ulVal) };
             }
-            if (properties.TryGetValue("strike", out var pStrike) && IsTruthy(pStrike))
+            if ((properties.TryGetValue("strike", out var pStrike) || properties.TryGetValue("strikethrough", out pStrike)) && IsTruthy(pStrike))
                 rProps.Strike = new Strike();
             if (properties.TryGetValue("highlight", out var pHighlight))
                 rProps.Highlight = new Highlight { Val = ParseHighlightColor(pHighlight) };
@@ -302,7 +305,7 @@ public partial class WordHandler
             var ulVal = rUnderline.ToLowerInvariant() switch { "true" => "single", "false" or "none" => "none", _ => rUnderline };
             newRProps.Underline = new Underline { Val = new UnderlineValues(ulVal) };
         }
-        if (properties.TryGetValue("strike", out var rStrike) && IsTruthy(rStrike))
+        if ((properties.TryGetValue("strike", out var rStrike) || properties.TryGetValue("strikethrough", out rStrike)) && IsTruthy(rStrike))
             newRProps.Strike = new Strike();
         if (properties.TryGetValue("highlight", out var rHighlight))
             newRProps.Highlight = new Highlight { Val = ParseHighlightColor(rHighlight) };
