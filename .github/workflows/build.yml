@@ -72,7 +72,7 @@ jobs:
             -e TARGET_RID=${{ matrix.rid }} \
             alpine:3.20 sh -c '
               set -e
-              apk add --no-cache bash curl clang build-base zlib-dev zlib-static openssl-dev openssl-libs-static linux-headers
+              apk add --no-cache bash curl clang build-base zlib-dev zlib-static openssl-dev openssl-libs-static linux-headers cmake
               export DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
               curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel 10.0 --quality preview --install-dir /usr/share/dotnet
               export PATH="/usr/share/dotnet:$PATH"
